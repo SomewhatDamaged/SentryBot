@@ -8,7 +8,8 @@ from .image_process import phash
 from .image_normalize import convert_to_png_async
 from PIL import Image
 
-USER_AGENT = "Sentrybot/dev@excessive.space/v1.0"
+# make your own useragent file that has your email in it
+USER_AGENT: str = "SentryBot/" + open("./useragent").read().strip() + "/v1.0.0"
 
 
 class Downloader:

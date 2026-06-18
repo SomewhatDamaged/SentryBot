@@ -8,7 +8,8 @@ from image import Downloader
 
 DOWNLOADER: Downloader
 
-TOKEN: str = open('./discord_token').read().strip() # Make a 'discord_token' file and put your token in it. Keep it safe.
+# Make a 'discord_token' file and put your token in it. Keep it safe.
+TOKEN: str = open('./discord_token').read().strip()
 
 
 # noinspection PyBroadException,PyMethodMayBeStatic
