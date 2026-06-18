@@ -10,6 +10,7 @@ from PIL import Image
 
 USER_AGENT = "Sentrybot/dev@excessive.space/v1.0"
 
+
 class Downloader:
     headers = {"User-Agent": USER_AGENT}
 
@@ -45,7 +46,6 @@ class Downloader:
         if isinstance(status, bool):
             return status
         raise ValueError(f"Website returned status '{status}' instead of 200 or 404")
-
 
     async def get_hash(self, url: str) -> imagehash.ImageHash:
         image = await self.download_image(url)

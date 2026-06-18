@@ -1,12 +1,10 @@
 import asyncio
 import traceback
-from typing import Union
 
 import discord
 from discord_features import check_message, notify_staff, clean_last_pinged
 
 from image import Downloader
-from datetime import datetime, timedelta, timezone
 
 DOWNLOADER: Downloader
 
