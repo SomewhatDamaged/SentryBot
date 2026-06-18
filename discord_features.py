@@ -19,7 +19,7 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
             items_to_check.append(items.url)
     for url in items_to_check:
         p_hash = await downloader.get_hash(url)
-        if p_hash:
+        if await downloader.check_hash(p_hash):
             return p_hash
     return None
 
