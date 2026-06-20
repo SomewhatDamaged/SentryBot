@@ -20,6 +20,13 @@ class MyClient(discord.Client):
     async def on_message(self, message):
         if message.guild is None:
             return
+        if message.author.bot:
+            return
+        if bool(message.author.guild_permissions.ban_members):
+            for member in message.mentions:
+                if member.id == self.user.id:
+                    await message.reply(f"I hear you, {message.author.mention}!")
+                    return
         try:
             global DOWNLOADER
             print(f'Message from {message.author}: {message.content}')
