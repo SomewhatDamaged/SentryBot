@@ -12,7 +12,7 @@ from PIL import Image
 USER_AGENT: str = "SentryBot/" + open("./useragent").read().strip() + "/v1.0.0"
 HOW_CLOSE: int = 4 # This is a measure of how similar images should be. If they match exactly, or are within 3 distance, it will always be 8-10
 #                    If the image has had a little more editing done, and the dimensions are almost the same, it will give a scale:
-#                    0-2 — large hamming distance and large dimension change
+#                    1-2 — large hamming distance and large dimension change
 #                    3-4 — hamming distance less than 10 and dimensions close
 #                    5-6 — hamming distance close (4-6) and dimensions almost exactly same
 
