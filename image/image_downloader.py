@@ -4,13 +4,17 @@ import aiohttp
 import io
 
 import imagehash
-from .image_process import phash
+from .image_process import phash, dimensions
 from .image_normalize import convert_to_png_async
 from PIL import Image
 
 # make your own useragent file that has your email in it
 USER_AGENT: str = "SentryBot/" + open("./useragent").read().strip() + "/v1.0.0"
-
+HOW_CLOSE: int = 4 # This is a measure of how similar images should be. If they match exactly, or are within 3 distance, it will always be 8-10
+#                    If the image has had a little more editing done, and the dimensions are almost the same, it will give a scale:
+#                    0-2 — large hamming distance and large dimension change
+#                    3-4 — hamming distance less than 10 and dimensions close
+#                    5-6 — hamming distance close (4-6) and dimensions almost exactly same
 
 class Downloader:
     headers = {"User-Agent": USER_AGENT}
@@ -29,25 +33,29 @@ class Downloader:
             image = Image.open(buffer)
             return image
 
-    async def http_get(self, url: str) -> aiohttp.ClientResponse:
+    async def http_get(self, url: str) -> tuple[aiohttp.ClientResponse, Union[list, dict]]:
         async with self.session.get(url, headers=self.headers) as response:
-            return response
+            return response, await response.json()
 
     async def http_head(self, url: str) -> aiohttp.ClientResponse:
         async with self.session.head(url, headers=self.headers) as response:
             return response
 
-    async def check_hash(self, p_hash: Union[imagehash.ImageHash, str]) -> bool:
-        response = await self.http_head(f"https://api.excessive.space/v1/hashcompare?hash={str(p_hash)}")
-        response_lookup = {
-            200: True,  # Image is in the hashes
-            404: False  # Image is not in the hashes
-        }
-        status = response_lookup.get(response.status, response.status)  # default to cover 5xx and such
-        if isinstance(status, bool):
-            return status
-        raise ValueError(f"Website returned status '{status}' instead of 200 or 404")
+    async def check_hash(self, p_hash: Union[imagehash.ImageHash, str], dimensions: list[int]) -> bool:
+        url = f"https://api.excessive.space/v1/scamscore?hash={str(p_hash)}&dimensions={dimensions[0]},{dimensions[1]}"
+        print("DEBUG " + f"{url = }")
+        response, data = await self.http_get(url)
+        print("DEBUG " + f"{data = }")
+        print("DEBUG " + f"{response.status = }")
+        if response.status == 404:
+            print("DEBUG " + "MISS")
+            return False
+        if "result" in data and int(data["result"]) >= HOW_CLOSE:
+            print("DEBUG " + "HIT")
+            return True
+        raise ValueError(f"Website returned status '{response.status}' instead of 200 or 404")
 
-    async def get_hash(self, url: str) -> imagehash.ImageHash:
+    async def get_hash(self, url: str) -> tuple[imagehash.ImageHash, list]:
         image = await self.download_image(url)
-        return phash(image)
+        return phash(image), dimensions(image)
+
