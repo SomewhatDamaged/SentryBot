@@ -48,6 +48,8 @@ class Downloader:
             return False
         if "result" in data and int(data["result"]) >= HOW_CLOSE:
             return True
+        if "result" in data:
+            return False
         raise ValueError(f"Website returned status '{response.status}' instead of 200 or 404")
 
     async def get_hash(self, url: str) -> tuple[imagehash.ImageHash, list]:
