@@ -58,7 +58,7 @@ async def notify_staff(message: discord.Message):
     for member in guild.members:
         if can_ban(member):
             mods.append(member)
-    message_out = "Yup, another 4-image-scam\nPinging online/idle mods...\n"
+    message_out = "Yup, another crypto-image-scam\nPinging online/idle mods...\n"
     if mods:
         for member in mods:
             message_out += "- " + member.mention + "\n"
