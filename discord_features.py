@@ -32,19 +32,16 @@ def fetch_data(message: Union[discord.Message, discord.MessageSnapshot]) -> list
     items_to_check = []
     items: discord.Attachment
     for items in message.attachments:
-        print("DEBUG: " + "found attachments")
         if items.url:
             items_to_check.append(items.url)
     items: discord.Embed
     for items in message.embeds:
-        print("DEBUG: " + "found embeds")
         if items.image.url:
             items_to_check.append(items.image.url)
         if items.thumbnail.url:
             items_to_check.append(items.thumbnail.url)
     items: str
     for items in url_regex.findall(message.content):
-        print("DEBUG: " + "found urls")
         items_to_check.append(items)
     return items_to_check
 

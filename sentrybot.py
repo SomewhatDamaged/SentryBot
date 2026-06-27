@@ -30,7 +30,6 @@ class MyClient(discord.Client):
         global DOWNLOADER
         try:
             with self.lock:
-                print(f'Message from {message.author}')
                 if await check_message(message, DOWNLOADER):
                     clean_last_pinged()
                     await notify_staff(message)
