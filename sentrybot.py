@@ -3,7 +3,7 @@ import traceback
 
 import discord
 from discord_features import check_message, notify_staff, clean_last_pinged
-
+from threading import Lock
 from image import Downloader
 
 DOWNLOADER: Downloader
@@ -11,9 +11,9 @@ DOWNLOADER: Downloader
 # Make a 'discord_token' file and put your token in it. Keep it safe.
 TOKEN: str = open('./discord_token').read().strip()
 
-
 # noinspection PyBroadException,PyMethodMayBeStatic
 class MyClient(discord.Client):
+    lock = Lock()
     async def on_ready(self):
         print(f'Logged on as {self.user}!')
 
@@ -27,16 +27,15 @@ class MyClient(discord.Client):
                 if member.id == self.user.id:
                     await message.reply(f"I hear you, {message.author.mention}!")
                     return
+        global DOWNLOADER
         try:
-            global DOWNLOADER
-            print(f'Message from {message.author}: {message.content}')
-            if not message.attachments and not message.embeds:
+            with self.lock:
+                print(f'Message from {message.author}')
+                if await check_message(message, DOWNLOADER):
+                    clean_last_pinged()
+                    await notify_staff(message)
+                    return
                 return
-            if await check_message(message, DOWNLOADER):
-                clean_last_pinged()
-                await notify_staff(message)
-                return
-            return
         except Exception:
             traceback.print_exc()
 
