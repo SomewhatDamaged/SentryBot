@@ -43,15 +43,10 @@ class Downloader:
 
     async def check_hash(self, p_hash: Union[imagehash.ImageHash, str], dimensions: list[int]) -> bool:
         url = f"https://api.excessive.space/v1/scamscore?hash={str(p_hash)}&dimensions={dimensions[0]},{dimensions[1]}"
-        print("DEBUG " + f"{url = }")
         response, data = await self.http_get(url)
-        print("DEBUG " + f"{data = }")
-        print("DEBUG " + f"{response.status = }")
         if response.status == 404:
-            print("DEBUG " + "MISS")
             return False
         if "result" in data and int(data["result"]) >= HOW_CLOSE:
-            print("DEBUG " + "HIT")
             return True
         raise ValueError(f"Website returned status '{response.status}' instead of 200 or 404")
 
