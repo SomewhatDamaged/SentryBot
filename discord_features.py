@@ -60,8 +60,9 @@ def can_ban(member: discord.Member) -> bool:
     return bool(member.guild_permissions.ban_members) and (status.lower() == "online" or status.lower() == "idle")
 
 def can_moderate(member: discord.Member) -> bool:
-    return bool(member.guild_permissions.moderate_members)
+    return bool(member.guild_permissions.moderate_members) if member else False
 
+# noinspection PyUnresolvedReferences
 async def notify_staff(message: discord.Message, has_muted: bool = False) -> None:
     guild = message.guild
     global LAST_PINGED
@@ -78,6 +79,7 @@ async def notify_staff(message: discord.Message, has_muted: bool = False) -> Non
         await message.reply(message_out)
         LAST_PINGED[last_pinged_string(message)] = datetime.now(tz=timezone.utc)
 
+# noinspection PyUnresolvedReferences
 def last_pinged_string(message: discord.Message) -> str:
     return f"{message.guild.id}|{message.author.id}"
 

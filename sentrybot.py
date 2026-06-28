@@ -11,7 +11,8 @@ DOWNLOADER: Downloader
 # Make a 'discord_token' file and put your token in it. Keep it safe.
 TOKEN: str = open('./discord_token').read().strip()
 
-# noinspection PyBroadException,PyMethodMayBeStatic
+
+# noinspection PyBroadException,PyMethodMayBeStatic,PyUnresolvedReferences
 class MyClient(discord.Client):
     lock = Lock()
     async def on_ready(self):

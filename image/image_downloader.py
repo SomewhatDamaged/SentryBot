@@ -41,8 +41,8 @@ class Downloader:
         async with self.session.head(url, headers=self.headers) as response:
             return response
 
-    async def check_hash(self, p_hash: Union[imagehash.ImageHash, str], dimensions: list[int]) -> bool:
-        url = f"https://api.excessive.space/v1/scamscore?hash={str(p_hash)}&dimensions={dimensions[0]},{dimensions[1]}"
+    async def check_hash(self, p_hash: Union[imagehash.ImageHash, str], image_dimensions: list[int]) -> bool:
+        url = f"https://api.excessive.space/v1/scamscore?hash={str(p_hash)}&dimensions={image_dimensions[0]},{image_dimensions[1]}"
         response, data = await self.http_get(url)
         if response.status == 404:
             return False
