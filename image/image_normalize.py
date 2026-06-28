@@ -21,5 +21,5 @@ def convert_to_png(image_in: BytesIO) -> Union[BytesIO, None]:
             image.save(image_out)
         image_out.seek(0)
         return image_out
-    except MissingDelegateWarning:
+    except Exception:
         return None
