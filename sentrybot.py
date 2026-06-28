@@ -41,6 +41,10 @@ class MyClient(discord.Client):
                     await notify_staff(message, has_muted)
                     return
                 return
+        except ValueError as e:
+            if e.args[0] == "Could not convert to PNG":
+                return
+            traceback.print_exc()
         except Exception:
             traceback.print_exc()
 
