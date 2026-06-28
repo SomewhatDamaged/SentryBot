@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 
 LAST_PINGED: dict = {} # Keeps track of how long ago a ping went out on server
 DELAY_MINUTES: int = 5 # How long to wait between pings
+TIMEOUT_FOR: int = 12 # How many hours to timeout users for (if the bot can)
 
 url_regex = re.compile(r"https?://(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,16}\b[-a-zA-Z0-9()@:%_+.,~#?&/=\[\]]*", flags=re.IGNORECASE)
 
@@ -45,13 +46,23 @@ def fetch_data(message: Union[discord.Message, discord.MessageSnapshot]) -> list
         items_to_check.append(items)
     return items_to_check
 
+async def timeout_member(member: discord.Member) -> bool:
+    try:
+        await member.timeout(timedelta(hours=TIMEOUT_FOR), reason=f"Posted images that matched as crypto-scams. ({TIMEOUT_FOR} hours)")
+    except (discord.Forbidden, discord.HTTPException, TypeError, ValueError):
+        return False
+    return True
+
 def can_ban(member: discord.Member) -> bool:
     if member.bot:
         return False
     status = member.raw_status
     return bool(member.guild_permissions.ban_members) and (status.lower() == "online" or status.lower() == "idle")
 
-async def notify_staff(message: discord.Message):
+def can_moderate(member: discord.Member) -> bool:
+    return bool(member.guild_permissions.moderate_members)
+
+async def notify_staff(message: discord.Message, has_muted: bool = False) -> None:
     guild = message.guild
     global LAST_PINGED
     mods = []
@@ -62,6 +73,8 @@ async def notify_staff(message: discord.Message):
     if mods:
         for member in mods:
             message_out += "- " + member.mention + "\n"
+        if has_muted:
+            message_out += f"Muted them for {TIMEOUT_FOR} hours (:\n"
         await message.reply(message_out)
         LAST_PINGED[last_pinged_string(message)] = datetime.now(tz=timezone.utc)
 

@@ -2,7 +2,7 @@ import asyncio
 import traceback
 
 import discord
-from discord_features import check_message, notify_staff, clean_last_pinged
+from discord_features import check_message, notify_staff, clean_last_pinged, can_moderate, timeout_member
 from threading import Lock
 from image import Downloader
 
@@ -22,6 +22,7 @@ class MyClient(discord.Client):
             return
         if message.author.bot:
             return
+        me = await message.guild.fetch_member(self.user.id)
         if bool(message.author.guild_permissions.ban_members):
             for member in message.mentions:
                 if member.id == self.user.id:
@@ -31,8 +32,12 @@ class MyClient(discord.Client):
         try:
             with self.lock:
                 if await check_message(message, DOWNLOADER):
+                    has_muted = False
+                    if me and can_moderate(me):
+                        await timeout_member(message.author)
+                        has_muted = True
                     clean_last_pinged()
-                    await notify_staff(message)
+                    await notify_staff(message, has_muted)
                     return
                 return
         except Exception:
