@@ -10,7 +10,7 @@ from PIL import Image, UnidentifiedImageError
 from exceptions import SentryBotException
 
 # make your own useragent file that has your email in it
-USER_AGENT: str = "SentryBot/" + open("./useragent").read().strip() + "/v1.0.0"
+USER_AGENT: str = "SentryBot/" + open("./useragent").read().strip() + "/v1.1.1"
 HOW_CLOSE: int = 4 # This is a measure of how similar images should be. If they match exactly, or are within 3 distance, it will always be 8-10
 #                    If the image has had a little more editing done, and the dimensions are almost the same, it will give a scale:
 #                    1-2 — large hamming distance and large dimension change
