@@ -7,6 +7,7 @@ import imagehash
 import discord
 from image import Downloader
 from datetime import datetime, timezone, timedelta
+from exceptions import SentryBotException
 
 LAST_PINGED: dict = {} # Keeps track of how long ago a ping went out on server
 DELAY_MINUTES: int = 5 # How long to wait between pings
@@ -29,11 +30,9 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
             p_hash, dimensions = await downloader.get_hash(url)
             if await downloader.check_hash(p_hash, dimensions):
                 return p_hash
-        except ValueError as e:
-            errors = ["Could not convert to PNG", "Could not load image"]
-            if e.args[0] in errors:
-                return None
+        except SentryBotException:
             traceback.print_exc()
+            break
     return None
 
 def fetch_data(message: Union[discord.Message, discord.MessageSnapshot]) -> list:

@@ -6,8 +6,6 @@ from discord_features import check_message, notify_staff, clean_last_pinged, can
 from threading import Lock
 from image import Downloader
 
-DOWNLOADER: Downloader
-
 # Make a 'discord_token' file and put your token in it. Keep it safe.
 TOKEN: str = open('./discord_token').read().strip()
 
@@ -15,6 +13,11 @@ TOKEN: str = open('./discord_token').read().strip()
 # noinspection PyBroadException,PyMethodMayBeStatic,PyUnresolvedReferences
 class MyClient(discord.Client):
     lock = Lock()
+
+    def __init__(self, downloader: Downloader, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.downloader: Downloader = downloader
+
     async def on_ready(self):
         print(f'Logged on as {self.user}!')
 
@@ -29,10 +32,9 @@ class MyClient(discord.Client):
                 if member.id == self.user.id:
                     await message.reply(f"I hear you, {message.author.mention}!")
                     return
-        global DOWNLOADER
         try:
             with self.lock:
-                if await check_message(message, DOWNLOADER):
+                if await check_message(message, self.downloader):
                     has_muted = False
                     if me and can_moderate(me):
                         await timeout_member(message.author)
@@ -47,14 +49,13 @@ class MyClient(discord.Client):
 
 # noinspection PyDunderSlots,PyUnresolvedReferences,PyBroadException
 async def bot_init():
-    global DOWNLOADER
-    DOWNLOADER = Downloader()
+    downloader = Downloader()
     intents = discord.Intents.default()
     intents.message_content = True
     intents.members = True
     intents.presences = True
 
-    client = MyClient(intents=intents)
+    client = MyClient(intents=intents, downloader=downloader)
     try:
         await client.start(TOKEN, reconnect=True)
     except asyncio.exceptions.CancelledError:
