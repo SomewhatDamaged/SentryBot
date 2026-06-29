@@ -63,7 +63,7 @@ async def bot_init():
     except Exception:
         traceback.print_exc()
     finally:
-        await DOWNLOADER.close()
+        await downloader.close()
 
 if __name__ == '__main__':
     asyncio.run(bot_init())
