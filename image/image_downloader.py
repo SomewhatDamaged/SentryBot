@@ -6,7 +6,7 @@ import io
 import imagehash
 from .image_process import phash, dimensions
 from .image_normalize import convert_to_png_async
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 # make your own useragent file that has your email in it
 USER_AGENT: str = "SentryBot/" + open("./useragent").read().strip() + "/v1.0.0"
@@ -26,12 +26,15 @@ class Downloader:
         await self.session.close()
 
     async def download_image(self, url: str) -> Image.Image:
-        async with self.session.get(url, headers=self.headers) as response:
-            response.raise_for_status()
-            buffer = io.BytesIO(await response.read())
-            buffer = await convert_to_png_async(buffer)
-            image = Image.open(buffer)
-            return image
+        try:
+            async with self.session.get(url, headers=self.headers) as response:
+                response.raise_for_status()
+                buffer = io.BytesIO(await response.read())
+                buffer = await convert_to_png_async(buffer)
+                image = Image.open(buffer)
+                return image
+        except (aiohttp.ClientError, UnidentifiedImageError):
+            raise ValueError("Could not load image")
 
     async def http_get(self, url: str) -> tuple[aiohttp.ClientResponse, Union[list, dict]]:
         async with self.session.get(url, headers=self.headers) as response:
@@ -52,7 +55,7 @@ class Downloader:
             return False
         raise ValueError(f"Website returned status '{response.status}' instead of 200 or 404")
 
-    async def get_hash(self, url: str) -> tuple[imagehash.ImageHash, list]:
+    async def get_hash(self, url: str) -> tuple[Union[imagehash.ImageHash, None], Union[list, None]]:
         image = await self.download_image(url)
         return phash(image), dimensions(image)
 

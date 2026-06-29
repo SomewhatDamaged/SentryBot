@@ -1,7 +1,6 @@
 from typing import Union
 
 from wand.image import Image
-from wand.exceptions import MissingDelegateWarning
 from io import BytesIO
 import asyncio
 

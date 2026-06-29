@@ -1,4 +1,5 @@
 import re
+import traceback
 from typing import Union
 
 import imagehash
@@ -24,9 +25,15 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
     else:
         items_to_check += fetch_data(message)
     for url in items_to_check:
-        p_hash, dimensions = await downloader.get_hash(url)
-        if await downloader.check_hash(p_hash, dimensions):
-            return p_hash
+        try:
+            p_hash, dimensions = await downloader.get_hash(url)
+            if await downloader.check_hash(p_hash, dimensions):
+                return p_hash
+        except ValueError as e:
+            errors = ["Could not convert to PNG", "Could not load image"]
+            if e.args[0] in errors:
+                return None
+            traceback.print_exc()
     return None
 
 def fetch_data(message: Union[discord.Message, discord.MessageSnapshot]) -> list:
