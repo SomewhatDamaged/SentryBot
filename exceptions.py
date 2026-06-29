@@ -1,6 +1,9 @@
+from typing import Union
+
+
 class SentryBotException(Exception):
 
-    def __init__(self, message: str, variables: dict):
+    def __init__(self, message: str, variables: Union[dict, None] = None):
         self.message = message
         print(f"Encountered error: {message}")
         if not variables:

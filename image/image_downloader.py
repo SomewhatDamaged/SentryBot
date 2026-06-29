@@ -54,7 +54,7 @@ class Downloader:
             return True
         if "result" in data:
             return False
-        raise SentryBotException(f"Website returned status '{response.status}' instead of 200 or 404")
+        raise SentryBotException(f"Website returned status '{response.status}' instead of 200 or 404", {})
 
     async def get_hash(self, url: str) -> tuple[imagehash.ImageHash, list]:
         image = await self.download_image(url)
