@@ -30,6 +30,8 @@ class Downloader:
         try:
             async with self.session.get(url, headers=self.headers) as response:
                 response.raise_for_status()
+                if "mimetype" in response.headers and not response.headers["mimetype"].startswith("image/"):
+                    raise SentryBotException(f"URL is not an image", {"url": url})
                 buffer = io.BytesIO(await response.read())
                 buffer = await convert_to_png_async(buffer)
                 image = Image.open(buffer)
