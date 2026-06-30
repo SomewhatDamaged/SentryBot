@@ -4,13 +4,15 @@ from wand.image import Image
 from io import BytesIO
 import asyncio
 
+from exceptions import SentryBotException
+
 async def convert_to_png_async(image_in) -> BytesIO:
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, convert_to_png, image_in)
     if result is not None:
         return result
     else:
-        raise ValueError("Could not convert to PNG")
+        raise SentryBotException("Could not convert to PNG")
 
 def convert_to_png(image_in: BytesIO) -> Union[BytesIO, None]:
     try:

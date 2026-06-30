@@ -49,7 +49,7 @@ class MyClient(discord.Client):
 
 # noinspection PyDunderSlots,PyUnresolvedReferences,PyBroadException
 async def bot_init():
-    downloader = Downloader()
+    downloader = Downloader(useragent="SentryBot/" + open("./useragent").read().strip() + "/v1.1.1")
     intents = discord.Intents.default()
     intents.message_content = True
     intents.members = True

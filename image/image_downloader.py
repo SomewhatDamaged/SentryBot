@@ -10,7 +10,7 @@ from PIL import Image, UnidentifiedImageError
 from exceptions import SentryBotException
 
 # make your own useragent file that has your email in it
-USER_AGENT: str = "SentryBot/" + open("./useragent").read().strip() + "/v1.1.1"
+
 HOW_CLOSE: int = 4 # This is a measure of how similar images should be. If they match exactly, or are within 3 distance, it will always be 8-10
 #                    If the image has had a little more editing done, and the dimensions are almost the same, it will give a scale:
 #                    1-2 — large hamming distance and large dimension change
@@ -18,10 +18,10 @@ HOW_CLOSE: int = 4 # This is a measure of how similar images should be. If they 
 #                    5-6 — hamming distance close (4-6) and dimensions almost exactly same
 
 class Downloader:
-    headers = {"User-Agent": USER_AGENT}
 
-    def __init__(self):
+    def __init__(self, useragent: str):
         self.session = aiohttp.ClientSession()
+        self.headers = {"User-Agent": useragent}
 
     async def close(self):
         await self.session.close()
@@ -36,6 +36,8 @@ class Downloader:
                 return image
         except (aiohttp.ClientError, UnidentifiedImageError):
             raise SentryBotException("Could not load image", {"url": url})
+        except SentryBotException as e:
+            raise SentryBotException(e.message, {"url": url})
 
     async def http_get(self, url: str) -> tuple[aiohttp.ClientResponse, Union[list, dict]]:
         async with self.session.get(url, headers=self.headers) as response:
