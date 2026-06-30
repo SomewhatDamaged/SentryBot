@@ -1,14 +1,46 @@
 import asyncio
+import logging
 import traceback
 
 import discord
-from discord_features import check_message, notify_staff, clean_last_pinged, can_moderate, timeout_member
-from threading import Lock
+from attr import setters
+
+from discord_features import check_message, notify_staff, clean_last_pinged, can_moderate, can_ban, can_delete, can_kick, timeout_member, kick_member, ban_member, delete_message
+from asyncio import Lock
 from image import Downloader
+from mock_logging import MockLogger
+from moderation import Moderated
+
+try:
+    from logging_journald import JournaldLogHandler, check_journal_stream
+    # Use python default handler
+    LOG_HANDLERS = None
+
+    log = logging.getLogger()
+    log.setLevel(logging.DEBUG)
+
+    if (
+        # Check if program running as systemd service
+        check_journal_stream() or
+        # Check if journald socket is available
+        JournaldLogHandler.SOCKET_PATH.exists()
+    ):
+        fmt = logging.Formatter(
+            "%(asctime)s %(levelname)s %(module)s %(funcName)s %(lineno)d: %(message)s",
+            datefmt="[%d/%m/%Y %H:%M]",
+        )
+        journald_handler = JournaldLogHandler()
+        journald_handler.setFormatter(fmt)
+        log.addHandler(journald_handler)
+
+        LOG_HANDLERS = [JournaldLogHandler()]
+
+    log.info(f"Begin loggin. Level: {log.level}")
+except ModuleNotFoundError:
+    log = MockLogger()
 
 # Make a 'discord_token' file and put your token in it. Keep it safe.
 TOKEN: str = open('./discord_token').read().strip()
-
 
 # noinspection PyBroadException,PyMethodMayBeStatic,PyUnresolvedReferences
 class MyClient(discord.Client):
@@ -19,7 +51,7 @@ class MyClient(discord.Client):
         self.downloader: Downloader = downloader
 
     async def on_ready(self):
-        print(f'Logged on as {self.user}!')
+        log.info(f'Logged on as {self.user}!')
 
     async def on_message(self, message):
         if message.guild is None:
@@ -33,22 +65,33 @@ class MyClient(discord.Client):
                     await message.reply(f"I hear you, {message.author.mention}!")
                     return
         try:
-            with self.lock:
+            async with self.lock:
                 if await check_message(message, self.downloader):
-                    has_muted = False
-                    if me and can_moderate(me):
-                        await timeout_member(message.author)
-                        has_muted = True
+                    moderated = Moderated()
+                    if me and can_ban(me):
+                        await ban_member(message.author, message)
+                        moderated.banned = True
+                        moderated.deleted = True
+                    elif me and can_kick(me):
+                        await kick_member(message.author, message)
+                        moderated.kicked = True
+                    elif me and can_moderate(me):
+                        await timeout_member(message.author, message)
+                        moderated.muted = True
+                    if me and can_delete(me, message):
+                        await delete_message(message)
+                        moderated.deleted = True
                     clean_last_pinged()
-                    await notify_staff(message, has_muted)
+                    await notify_staff(message, moderated)
                     return
                 return
         except Exception:
-            traceback.print_exc()
+            log.exception("Something went wrong!")
 
 
 # noinspection PyDunderSlots,PyUnresolvedReferences,PyBroadException
 async def bot_init():
+    log.info("Initializing bot...")
     downloader = Downloader(useragent="SentryBot/" + open("./useragent").read().strip() + "/v1.1.1")
     intents = discord.Intents.default()
     intents.message_content = True

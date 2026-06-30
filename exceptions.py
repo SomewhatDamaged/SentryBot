@@ -11,3 +11,12 @@ class SentryBotException(Exception):
         print( "Variables: ")
         for key, datum in variables.items():
             print(f"  {key}: {datum}")
+
+class NotImageException(Exception):
+
+    def __init__(self, message: str):
+        self.message = message
+
+class URLException(Exception):
+    def __init__(self, message: str):
+        self.message = message

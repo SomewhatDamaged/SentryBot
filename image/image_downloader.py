@@ -7,7 +7,7 @@ import imagehash
 from .image_process import phash, dimensions
 from .image_normalize import convert_to_png_async
 from PIL import Image, UnidentifiedImageError
-from exceptions import SentryBotException
+from exceptions import SentryBotException, NotImageException, URLException
 
 # make your own useragent file that has your email in it
 
@@ -27,19 +27,17 @@ class Downloader:
         await self.session.close()
 
     async def download_image(self, url: str) -> Image.Image:
-        try:
-            async with self.session.get(url, headers=self.headers) as response:
+        async with self.session.get(url, headers=self.headers) as response:
+            try:
                 response.raise_for_status()
-                if "mimetype" in response.headers and not response.headers["mimetype"].startswith("image/"):
-                    raise SentryBotException(f"URL is not an image", {"url": url})
-                buffer = io.BytesIO(await response.read())
-                buffer = await convert_to_png_async(buffer)
-                image = Image.open(buffer)
-                return image
-        except (aiohttp.ClientError, UnidentifiedImageError):
-            raise SentryBotException("Could not load image", {"url": url})
-        except SentryBotException as e:
-            raise SentryBotException(e.message, {"url": url})
+            except aiohttp.client_exceptions.ClientResponseError:
+                raise URLException(url)
+            if "content-type" in response.headers and not response.headers["content-type"].startswith("image/"):
+                raise NotImageException(url)
+            buffer = io.BytesIO(await response.read())
+            buffer = await convert_to_png_async(buffer)
+            image = Image.open(buffer)
+            return image
 
     async def http_get(self, url: str) -> tuple[aiohttp.ClientResponse, Union[list, dict]]:
         async with self.session.get(url, headers=self.headers) as response:
