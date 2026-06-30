@@ -102,11 +102,11 @@ async def kick_member(member: discord.Member, message: discord.Message) -> bool:
         return False
     return True
 
-async def delete_message(message: discord.Message) -> bool:
+async def delete_message(message: discord.Message, moderated: Moderated) -> bool:
     author = message.author
     assert isinstance(author, discord.Member)
     try:
-        if not too_recent(author): # Waaaay too soon to notify more.
+        if not too_recent(author) and not moderated.moderated: # Waaaay too soon to notify more.
             success_one = await send_message(target=author, content=f"Your message has been deleted as it was detected to have crypto-scam images. If this was in error, please contact a moderator of {message.guild}.")
             success_two = await send_message(target=author, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:

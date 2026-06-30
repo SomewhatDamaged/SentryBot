@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import traceback
 
 import discord
@@ -17,7 +18,10 @@ try:
     LOG_HANDLERS = None
 
     log = logging.getLogger()
-    log.setLevel(logging.DEBUG)
+    if os.path.exists("./.debug"):
+        log.setLevel(logging.DEBUG)
+    else:
+        log.setLevel(logging.INFO)
 
     if (
         # Check if program running as systemd service
@@ -79,7 +83,7 @@ class MyClient(discord.Client):
                         await timeout_member(message.author, message)
                         moderated.muted = True
                     if me and can_delete(me, message):
-                        await delete_message(message)
+                        await delete_message(message, moderated)
                         moderated.deleted = True
                     clean_last_pinged()
                     await notify_staff(message, moderated)
