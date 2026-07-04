@@ -34,7 +34,7 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
     else:
         items_to_check += fetch_data(message)
     items_to_check = list(set(items_to_check))
-    hashes: list[] = []
+    hashes: list = []
     images: list[Image.Image] = []
     log.debug(f"{items_to_check = }")
     for url in items_to_check:
