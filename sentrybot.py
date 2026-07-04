@@ -14,13 +14,7 @@ from moderation import Moderated
 try:
     from logging_journald import JournaldLogHandler, check_journal_stream
     # Use python default handler
-    LOG_HANDLERS = None
 
-    log = logging.getLogger()
-    if os.path.exists("./.debug"):
-        log.setLevel(logging.DEBUG)
-    else:
-        log.setLevel(logging.INFO)
 
     if (
         # Check if program running as systemd service
@@ -28,6 +22,13 @@ try:
         # Check if journald socket is available
         JournaldLogHandler.SOCKET_PATH.exists()
     ):
+        LOG_HANDLERS = None
+
+        log = logging.getLogger()
+        if os.path.exists("./.debug"):
+            log.setLevel(logging.DEBUG)
+        else:
+            log.setLevel(logging.INFO)
         fmt = logging.Formatter(
             "%(asctime)s %(levelname)s %(module)s %(funcName)s %(lineno)d: %(message)s",
             datefmt="[%d/%m/%Y %H:%M]",
@@ -37,7 +38,8 @@ try:
         log.addHandler(journald_handler)
 
         LOG_HANDLERS = [JournaldLogHandler()]
-
+    else:
+        log = MockLogger()
     log.info(f"Begin loggin. Level: {log.level}")
 except ModuleNotFoundError:
     log = MockLogger()
