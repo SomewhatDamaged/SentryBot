@@ -5,7 +5,6 @@ from typing import Union
 import imagehash
 
 import discord
-from PIL import Image
 
 from image import Downloader
 from datetime import datetime, timezone, timedelta
@@ -17,7 +16,6 @@ log = logging.getLogger()
 if log is not None:
     log = MockLogger()
 
-SCAM_SCORE_TRIGGER: int = 50 # The total amount of scoring per message to consider it a scam
 LAST_PINGED: dict = {} # Keeps track of how long ago a ping went out on server
 DELAY_MINUTES: int = 5 # How long to wait between pings
 TIMEOUT_FOR: int = 12 # How many hours to timeout users for (if the bot can)
@@ -32,8 +30,6 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
     else:
         items_to_check += fetch_data(message)
     items_to_check = list(set(items_to_check))
-    hashes: list = []
-    images: list[Image.Image] = []
     log.debug(f"{items_to_check = }")
     for url in items_to_check:
         try:
