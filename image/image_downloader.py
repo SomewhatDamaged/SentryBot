@@ -37,7 +37,7 @@ class Downloader:
     async def close(self):
         await self.session.close()
 
-    async def save_images(self, images: list[Image.Image]) -> list[str]:
+    async def save_images(self, images: list[Image.Image]):
         i: int = 0
         now = generate(datetime.now(tz=timezone.utc)).replace(":", "-")
         if not os.path.exists(f".suspect_images"):
@@ -49,12 +49,11 @@ class Downloader:
             try:
                 if image:
                     loop = asyncio.get_event_loop()
-                    blocking_io = functools.partial(self.blocking_save_image,image, f".suspect_images/{now}/{i}.png")
+                    blocking_io = functools.partial(self.blocking_save_image,image, f".suspect_images/{now}/image-{i}.png")
                     await loop.run_in_executor(None, blocking_io)
                     i += 1
             except Exception:
                 log.exception("Something went wrong!")
-        return [f".suspect_images/{now}/{i}.png" for i in range(0, i-1)]
 
     def blocking_save_image(self, image: Image.Image, filename: str):
         try:
@@ -94,6 +93,6 @@ class Downloader:
             return False
         raise SentryBotException(f"Website returned status '{response.status}' instead of 200 or 404", {})
 
-    async def get_hash(self, url: str) -> tuple[imagehash.ImageHash, list, int, Image.Image]:
+    async def get_hash(self, url: str) -> tuple[imagehash.ImageHash, list, Image.Image]:
         image = await self.download_image(url)
-        return phash(image), dimensions(image), await scam_score(image), image
+        return phash(image), dimensions(image), image
