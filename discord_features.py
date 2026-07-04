@@ -1,14 +1,17 @@
+import asyncio
 import logging
 import re
-import traceback
 from typing import Union
 
 import imagehash
 
 import discord
+from PIL import Image
+
 from image import Downloader
 from datetime import datetime, timezone, timedelta
 from exceptions import SentryBotException, NotImageException, URLException
+from image.image_process import scam_score
 from mock_logging import MockLogger
 from moderation import Moderated
 
@@ -16,6 +19,7 @@ log = logging.getLogger()
 if log is not None:
     log = MockLogger()
 
+SCAM_SCORE_TRIGGER: int = 50 # The total amount of scoring per message to consider it a scam
 LAST_PINGED: dict = {} # Keeps track of how long ago a ping went out on server
 DELAY_MINUTES: int = 5 # How long to wait between pings
 TIMEOUT_FOR: int = 12 # How many hours to timeout users for (if the bot can)
@@ -29,10 +33,17 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
             items_to_check += fetch_data(forwarded_message)
     else:
         items_to_check += fetch_data(message)
+    items_to_check = list(set(items_to_check))
+    hashes: list = []
+    images: list[Image.Image] = []
+    log.debug(f"{items_to_check = }")
     for url in items_to_check:
         try:
             log.info(f"Checking {url}")
-            p_hash, dimensions = await downloader.get_hash(url)
+            p_hash, dimensions, image = await downloader.get_hash(url)
+            if p_hash not in hashes:
+                hashes.append(p_hash)
+                images.append(image)
             if await downloader.check_hash(p_hash, dimensions):
                 return p_hash
         except NotImageException:
@@ -44,6 +55,13 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
             log.exception(f"URL: {url}")
         except Exception:
             log.exception(f"URL: {url}")
+    scam_score_total: int = 0
+    for image in images:
+        log.debug(f"Checking {image = }")
+        scam_score_total += await scam_score(image)
+    if scam_score_total >= SCAM_SCORE_TRIGGER:
+        log.debug(f"Found a scam score of {scam_score_total}")
+        asyncio.create_task(downloader.save_images(images))
     return None
 
 def fetch_data(message: Union[discord.Message, discord.MessageSnapshot]) -> list:
