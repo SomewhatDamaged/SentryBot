@@ -4,7 +4,6 @@ import os
 import traceback
 
 import discord
-from attr import setters
 
 from discord_features import check_message, notify_staff, clean_last_pinged, can_moderate, can_ban, can_delete, can_kick, timeout_member, kick_member, ban_member, delete_message
 from asyncio import Lock
