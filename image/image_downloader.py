@@ -1,25 +1,14 @@
-import asyncio
-import functools
-import logging
-import os
-from datetime import datetime, timezone
 from typing import Union
-from pyrfc3339 import generate
 
 import aiohttp
 import io
 
 import imagehash
-from .image_process import phash, dimensions, scam_score
+from .image_process import phash, dimensions
 from .image_normalize import convert_to_png_async
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from exceptions import SentryBotException, NotImageException, URLException
-import logging
-from mock_logging import MockLogger
 
-log = logging.getLogger()
-if log is not None:
-    log = MockLogger()
 # make your own useragent file that has your email in it
 
 HOW_CLOSE: int = 4 # This is a measure of how similar images should be. If they match exactly, or are within 3 distance, it will always be 8-10
@@ -36,30 +25,6 @@ class Downloader:
 
     async def close(self):
         await self.session.close()
-
-    async def save_images(self, images: list[Image.Image]):
-        i: int = 0
-        now = generate(datetime.now(tz=timezone.utc)).replace(":", "-")
-        if not os.path.exists(f".suspect_images"):
-            os.mkdir(f".suspect_images")
-        if not os.path.exists(f".suspect_images/{now}"):
-            os.mkdir(f".suspect_images/{now}")
-        for image in images:
-            await asyncio.sleep(1)
-            try:
-                if image:
-                    loop = asyncio.get_event_loop()
-                    blocking_io = functools.partial(self.blocking_save_image,image, f".suspect_images/{now}/image-{i}.png")
-                    await loop.run_in_executor(None, blocking_io)
-                    i += 1
-            except Exception:
-                log.exception("Something went wrong!")
-
-    def blocking_save_image(self, image: Image.Image, filename: str):
-        try:
-            image.save(filename, "PNG")
-        except Exception:
-            return
 
     async def download_image(self, url: str) -> Image.Image:
         async with self.session.get(url, headers=self.headers) as response:
@@ -93,6 +58,6 @@ class Downloader:
             return False
         raise SentryBotException(f"Website returned status '{response.status}' instead of 200 or 404", {})
 
-    async def get_hash(self, url: str) -> tuple[imagehash.ImageHash, list, Image.Image]:
+    async def get_hash(self, url: str) -> tuple[imagehash.ImageHash, list]:
         image = await self.download_image(url)
-        return phash(image), dimensions(image), image
+        return phash(image), dimensions(image)

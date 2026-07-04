@@ -107,7 +107,7 @@ async def bot_init():
     except asyncio.exceptions.CancelledError:
         pass
     except Exception:
-        log.exception("Something went wrong!")
+        traceback.print_exc()
     finally:
         await downloader.close()
 
