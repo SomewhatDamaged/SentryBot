@@ -2,6 +2,7 @@ import sys
 import traceback as tb
 
 class MockLogger:
+    level = "DEBUG"
     def __init__(self):
         pass
 

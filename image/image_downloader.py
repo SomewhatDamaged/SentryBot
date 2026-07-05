@@ -6,7 +6,7 @@ import io
 import imagehash
 from .image_process import phash, dimensions
 from .image_normalize import convert_to_png_async
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 from exceptions import SentryBotException, NotImageException, URLException
 
 # make your own useragent file that has your email in it
