@@ -16,3 +16,21 @@ If you want to add the public version:
 📧Email: sentrybot@excessive.space (please send any scam images the bot doesn't recognize)
 
 💬Message: .damaged
+
+
+Config files:
+
+You need to have 3 config files to use all the features.
+
+1. `useragent` - this takes an email to shove in your UA so sites can contact you.
+2. `discord_token` - this is your token for your bot. see Discord to get one.
+3. `.cloudflade_config.json` - a file to configure the S3 compatible storage. See below:
+
+```json
+{
+  "ACCESS_KEY_ID": "",
+  "SECRET_ACCESS_KEY": "",
+  "S3_API_ENDPOINT": "",
+  "BUCKET_NAME": ""
+}
+```

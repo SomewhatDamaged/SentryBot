@@ -22,7 +22,7 @@ TIMEOUT_FOR: int = 12 # How many hours to timeout users for (if the bot can)
 
 url_regex = re.compile(r"https?://(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,16}\b[-a-zA-Z0-9()@:%_+.,~#?&/=\[\]]*", flags=re.IGNORECASE)
 
-async def check_message(message: discord.Message, downloader: Downloader) -> Union[None, imagehash.ImageHash]:
+async def get_urls(message: discord.Message) -> list:
     items_to_check = []
     if message.message_snapshots:
         for forwarded_message in message.message_snapshots:
@@ -30,6 +30,11 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
     else:
         items_to_check += fetch_data(message)
     items_to_check = list(set(items_to_check))
+    return items_to_check
+
+
+async def check_message(message: discord.Message, downloader: Downloader) -> Union[None, imagehash.ImageHash]:
+    items_to_check = await get_urls(message)
     log.debug(f"{items_to_check = }")
     for url in items_to_check:
         try:
