@@ -72,7 +72,7 @@ async def timeout_member(member: discord.Member, message: discord.Message) -> bo
             success_two = await send_message(target=member, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
                 log.exception(f"Unable to send 'timeout user' message to {member.display_name} ({message.author.id})")
-        await member.timeout(timedelta(hours=TIMEOUT_FOR), reason=f"SentyBot(Automated): Posted images that matched as crypto-scams. ({TIMEOUT_FOR} hours)")
+            await member.timeout(timedelta(hours=TIMEOUT_FOR), reason=f"SentyBot(Automated): Posted images that matched as crypto-scams. ({TIMEOUT_FOR} hours)")
     except (discord.Forbidden, discord.HTTPException, TypeError, ValueError):
         log.exception()
         return False
@@ -85,7 +85,7 @@ async def ban_member(member: discord.Member, message: discord.Message) -> bool:
             success_two = await send_message(target=member, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
                 log.exception(f"Unable to send 'banned user' message to {member.display_name} ({message.author.id})")
-        await member.ban(delete_message_seconds=60, reason="SentyBot(Automated): Sending crypto-scam messages. Deleted last 1min of messages.")
+            await member.ban(delete_message_seconds=60, reason="SentyBot(Automated): Sending crypto-scam messages. Deleted last 1min of messages.")
     except (discord.Forbidden, discord.HTTPException, discord.NotFound, ValueError, TypeError):
         log.exception()
         return False
@@ -98,7 +98,7 @@ async def kick_member(member: discord.Member, message: discord.Message) -> bool:
             success_two = await send_message(target=member, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
                 log.exception(f"Unable to send 'kicked user' message to {member.display_name} ({message.author.id})")
-        await member.kick(reason="SentyBot(Automated): Sending crypto-scam messages. Deleted last 1min of messages.")
+            await member.kick(reason="SentyBot(Automated): Sending crypto-scam messages. Deleted last 1min of messages.")
     except (discord.Forbidden, discord.HTTPException, discord.NotFound, ValueError):
         log.exception()
         return False
