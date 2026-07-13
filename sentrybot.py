@@ -117,8 +117,6 @@ class MyClient(discord.Client):
                     for p_hash, dimensions, image_type in image_metadata:
                         if await self.downloader.check_hash(p_hash, dimensions):
                             embeds[-1].description += f"Found {p_hash} in {image_type} with dimensions {dimensions}\n"
-                            if image_type == "orig":
-                                embeds[-1].description += sub_message
                             await interaction.edit_original_response(content=message_content, embeds=embeds)
                             something_found = True
                         else:
@@ -126,6 +124,8 @@ class MyClient(discord.Client):
                             await interaction.edit_original_response(content=message_content, embeds=embeds)
                             if image_type == "orig":
                                 not_found_main = True
+                        if image_type == "orig":
+                            embeds[-1].description += sub_message
                 except NotImageException:
                     embeds[-1].description += f"URL not an image"
                     await interaction.edit_original_response(content=message_content, embeds=embeds)
