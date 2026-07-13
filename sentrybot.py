@@ -11,40 +11,9 @@ from mock_logging import MockLogger
 from moderation import Moderated
 from cloudflare import MyCloudflare
 
-try:
-    from logging_journald import JournaldLogHandler, check_journal_stream
-    # Use python default handler
 
-
-    if (
-        # Check if program running as systemd service
-        check_journal_stream() or
-        # Check if journald socket is available
-        JournaldLogHandler.SOCKET_PATH.exists()
-    ):
-        LOG_HANDLERS = None
-
-        log = logging.getLogger()
-        if os.path.exists("./.debug"):
-            log.setLevel(logging.DEBUG)
-            log.info("Debug logging enabled")
-        else:
-            log.setLevel(logging.INFO)
-            log.info("Debug logging disabled")
-        fmt = logging.Formatter(
-            "%(asctime)s %(levelname)s %(module)s %(funcName)s %(lineno)d: %(message)s",
-            datefmt="[%d/%m/%Y %H:%M]",
-        )
-        journald_handler = JournaldLogHandler()
-        journald_handler.setFormatter(fmt)
-        log.addHandler(journald_handler)
-
-        LOG_HANDLERS = [JournaldLogHandler()]
-    else:
-        log = MockLogger()
-except ModuleNotFoundError:
-    log = MockLogger()
-log.info(f"Begin loggin. Level: {log.level}")
+log = MockLogger()
+log.info(f"Begin logging.")
 # Make a 'discord_token' file and put your token in it. Keep it safe.
 TOKEN: str = open('./discord_token').read().strip()
 

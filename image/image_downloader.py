@@ -1,4 +1,3 @@
-import logging
 from typing import Union
 
 import aiohttp
@@ -13,9 +12,7 @@ from PIL import Image
 from exceptions import SentryBotException, NotImageException, URLException
 from .split_images import split_two_images_async
 
-log = logging.getLogger()
-if log is not None:
-    log = MockLogger()
+log = MockLogger()
 
 
 # make your own useragent file that has your email in it
@@ -70,9 +67,6 @@ class Downloader:
         image = await self.download_image(url)
         output: list[tuple[imagehash.ImageHash, list[int]]] = []
         images = await split_two_images_async(image)
-        image = Image.open(image)
-        result = (phash(image), dimensions(image))
-        output.append(result)
         for image in images:
             image = Image.open(image)
             result = (phash(image), dimensions(image))
