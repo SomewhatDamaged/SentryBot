@@ -39,9 +39,11 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
     for url in items_to_check:
         try:
             log.info(f"Checking {url}")
-            p_hash, dimensions = await downloader.get_hash(url)
-            if await downloader.check_hash(p_hash, dimensions):
-                return p_hash
+            image_metadata = await downloader.get_hash(url)
+            for p_hash, dimensions in image_metadata:
+                if await downloader.check_hash(p_hash, dimensions):
+                    log.debug(f"Found {p_hash} with dimensions {dimensions} in {url}")
+                    return p_hash
         except NotImageException:
             log.info(f"URL not an image: {url}")
             continue

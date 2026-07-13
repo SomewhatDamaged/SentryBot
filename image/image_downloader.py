@@ -1,13 +1,22 @@
+import logging
 from typing import Union
 
 import aiohttp
 import io
 
 import imagehash
+
+from mock_logging import MockLogger
 from .image_process import phash, dimensions
 from .image_normalize import convert_to_png_async
 from PIL import Image
 from exceptions import SentryBotException, NotImageException, URLException
+from .split_images import split_two_images_async
+
+log = logging.getLogger()
+if log is not None:
+    log = MockLogger()
+
 
 # make your own useragent file that has your email in it
 
@@ -26,7 +35,7 @@ class Downloader:
     async def close(self):
         await self.session.close()
 
-    async def download_image(self, url: str) -> Image.Image:
+    async def download_image(self, url: str) -> io.BytesIO:
         async with self.session.get(url, headers=self.headers) as response:
             try:
                 response.raise_for_status()
@@ -36,8 +45,7 @@ class Downloader:
                 raise NotImageException(url)
             buffer = io.BytesIO(await response.read())
             buffer = await convert_to_png_async(buffer)
-            image = Image.open(buffer)
-            return image
+            return buffer
 
     async def http_get(self, url: str) -> tuple[aiohttp.ClientResponse, Union[list, dict]]:
         async with self.session.get(url, headers=self.headers) as response:
@@ -58,6 +66,15 @@ class Downloader:
             return False
         raise SentryBotException(f"Website returned status '{response.status}' instead of 200 or 404", {})
 
-    async def get_hash(self, url: str) -> tuple[imagehash.ImageHash, list]:
+    async def get_hash(self, url: str) -> list[tuple[imagehash.ImageHash, list[int]]]:
         image = await self.download_image(url)
-        return phash(image), dimensions(image)
+        output: list[tuple[imagehash.ImageHash, list[int]]] = []
+        images = await split_two_images_async(image)
+        image = Image.open(image)
+        result = (phash(image), dimensions(image))
+        output.append(result)
+        for image in images:
+            image = Image.open(image)
+            result = (phash(image), dimensions(image))
+            output.append(result)
+        return output
