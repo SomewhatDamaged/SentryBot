@@ -9,7 +9,7 @@ Because this needs to track what mods are online, and scan messages, it needs al
 <img width="2106" height="489" alt="image" src="https://github.com/user-attachments/assets/139039fe-0a64-44e3-80cc-6729b9e70e0a" />
 
 
-If you want to add the public version:
+## If you want to add the public version:
 
 🔗Invite: https://discord.com/oauth2/authorize?client_id=1517141264443773059
 
@@ -18,7 +18,7 @@ If you want to add the public version:
 💬Message: .damaged
 
 
-Config files:
+## Config files:
 
 You need to have 3 config files to use all the features.
 
@@ -34,3 +34,17 @@ You need to have 3 config files to use all the features.
   "BUCKET_NAME": ""
 }
 ```
+
+## There are two context menu commands:
+
+### Check Scam
+
+target: message
+
+use: will analyze the message's images/links giving a report on what it found.
+
+### Report Scam
+
+target: message
+
+use: will anonymously upload the message's images to a private storage server for admin to check if they're scams and add them to the list checked against.
