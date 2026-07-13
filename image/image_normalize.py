@@ -4,7 +4,7 @@ from wand.image import Image
 from io import BytesIO
 import asyncio
 
-from exceptions import SentryBotException
+from sentrybot_exceptions import SentryBotException
 
 async def convert_to_png_async(image_in) -> BytesIO:
     loop = asyncio.get_event_loop()

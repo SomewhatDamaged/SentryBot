@@ -8,7 +8,7 @@ import discord
 
 from image import Downloader
 from datetime import datetime, timezone, timedelta
-from exceptions import SentryBotException, NotImageException, URLException
+from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 from mock_logging import MockLogger
 from moderation import Moderated
 
@@ -40,9 +40,9 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
         try:
             log.info(f"Checking {url}")
             image_metadata = await downloader.get_hash(url)
-            for p_hash, dimensions in image_metadata:
+            for p_hash, dimensions, image_type in image_metadata:
                 if await downloader.check_hash(p_hash, dimensions):
-                    log.debug(f"Found {p_hash} with dimensions {dimensions} in {url}")
+                    log.debug(f"Found {p_hash} in {image_type} with dimensions {dimensions} in {url}")
                     return p_hash
         except NotImageException:
             log.info(f"URL not an image: {url}")

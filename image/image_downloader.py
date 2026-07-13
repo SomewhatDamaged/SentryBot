@@ -9,7 +9,7 @@ from mock_logging import MockLogger
 from .image_process import phash, dimensions
 from .image_normalize import convert_to_png_async
 from PIL import Image
-from exceptions import SentryBotException, NotImageException, URLException
+from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 from .split_images import split_two_images_async
 
 log = MockLogger()
@@ -63,12 +63,12 @@ class Downloader:
             return False
         raise SentryBotException(f"Website returned status '{response.status}' instead of 200 or 404", {})
 
-    async def get_hash(self, url: str) -> list[tuple[imagehash.ImageHash, list[int]]]:
+    async def get_hash(self, url: str) -> list[tuple[imagehash.ImageHash, list[int], str]]:
         image = await self.download_image(url)
-        output: list[tuple[imagehash.ImageHash, list[int]]] = []
+        output: list[tuple[imagehash.ImageHash, list[int], str]] = []
         images = await split_two_images_async(image)
-        for image in images:
-            image = Image.open(image)
-            result = (phash(image), dimensions(image))
+        for data in images:
+            image = Image.open(data["image"])
+            result = (phash(image), dimensions(image), data["type"])
             output.append(result)
         return output
