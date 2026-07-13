@@ -1,6 +1,5 @@
 import asyncio
-import logging
-import os
+import io
 import traceback
 
 import discord
@@ -10,6 +9,7 @@ from image import Downloader
 from mock_logging import MockLogger
 from moderation import Moderated
 from cloudflare import MyCloudflare
+from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 
 
 log = MockLogger()
@@ -28,6 +28,10 @@ class MyClient(discord.Client):
             discord.app_commands.ContextMenu(
                 name="Report Scam",
                 callback=self.context_menu_report,
+            ),
+            discord.app_commands.ContextMenu(
+                name="Check Scam",
+                callback=self.context_menu_inspect,
             )
         ]
         self.downloader: Downloader = downloader
@@ -44,18 +48,17 @@ class MyClient(discord.Client):
 
     @discord.app_commands.allowed_installs(guilds=True, users=True)
     @discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
+    @discord.app_commands.checks.cooldown(1, 30)
     async def context_menu_report(self, interaction: discord.Interaction, message: discord.Message):
         try:
             if self.cloudflare is None:
                 await interaction.response.send_message(content="Bot not configured for upload!", ephemeral=True)
                 return
             await interaction.response.send_message(content="Working on it...", ephemeral=True)
-            log.debug(f"Message: {message.content}")
             if message.guild is None:
                 prefix = f"{message.channel.id}-{message.id}"
             else:
                 prefix = f"{message.guild.id}-{message.channel.id}-{message.id}"
-            log.debug(f"Prefix: {prefix}")
             if await self.cloudflare.has_folder('', delimiter='/') >= 500:
                 await interaction.edit_original_response(content="Scam report storage full (500+)!")
                 log.debug("500+ reports filed!")
@@ -68,7 +71,7 @@ class MyClient(discord.Client):
             i: int = 0
             for url in urls:
                 try:
-                    image: Image.Image = await self.downloader.download_image(url)
+                    image: io.BytesIO = await self.downloader.download_image(url)
                     result = await self.cloudflare.send_to_s3(image=image, name=f"{prefix}/image{i}.png")
                     if not result:
                         log.error(f"Image upload error! URL: {url}")
@@ -84,6 +87,73 @@ class MyClient(discord.Client):
             log.exception("Something went wrong!")
             await interaction.edit_original_response(content="This is bad! Something went wrong!")
 
+    @discord.app_commands.allowed_installs(guilds=True, users=True)
+    @discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
+    async def context_menu_inspect(self, interaction: discord.Interaction, message: discord.Message):
+        embeds: list[discord.Embed] = []
+        message_content = ""
+        try:
+            await interaction.response.send_message(content="Working on it...", ephemeral=True)
+            items_to_check = await get_urls(message)
+            message_content = "Items to check:\n```\n"
+            for item in items_to_check:
+                message_content += f"{item.rsplit('/', 1)[1]}\n"
+            message_content += "\n```"
+            await interaction.edit_original_response(content=message_content)
+            something_found = False
+            not_found_main = False
+            for url in items_to_check:
+                try:
+                    embeds.append(discord.Embed(description=f"\n### Checking {url}\n"))
+                    if len(embeds) > 10:
+                        raise SentryBotException("Too many images to check. What happened?!")
+                    await interaction.edit_original_response(content=message_content, embeds=embeds)
+                    embeds[-1].description += "```\n"
+                    image_metadata = await self.downloader.get_hash(url)
+                    if len(image_metadata) > 1:
+                        sub_message = ">>>Checking for cropped images<<<\n"
+                    else:
+                        sub_message = ""
+                    for p_hash, dimensions, image_type in image_metadata:
+                        if await self.downloader.check_hash(p_hash, dimensions):
+                            embeds[-1].description += f"Found {p_hash} in {image_type} with dimensions {dimensions}\n"
+                            await interaction.edit_original_response(content=message_content, embeds=embeds)
+                            something_found = True
+                        else:
+                            embeds[-1].description += f"Not found {p_hash} in {image_type} with dimensions {dimensions}\n"
+                            await interaction.edit_original_response(content=message_content, embeds=embeds)
+                            if image_type == "orig":
+                                not_found_main = True
+                        if image_type == "orig":
+                            embeds[-1].description += sub_message
+                except NotImageException:
+                    embeds[-1].description += f"URL not an image"
+                    await interaction.edit_original_response(content=message_content, embeds=embeds)
+                    continue
+                except URLException:
+                    embeds[-1].description += f"Dead URL"
+                    await interaction.edit_original_response(content=message_content, embeds=embeds)
+                except SentryBotException as e:
+                    log.exception(f"URL: {url}")
+                    embed = discord.Embed(description=f"Something crashed!\n{e}")
+                    await interaction.edit_original_response(content=message_content, embed=embed)
+                    return
+                except Exception:
+                    log.exception(f"URL: {url}")
+                    embeds[-1].description += f"Something crashed!"
+                    await interaction.edit_original_response(content=message_content, embeds=embeds)
+                finally:
+                    embeds[-1].description += "\n```"
+
+        except Exception:
+            log.exception("Something went wrong!")
+            message_content = "\n### This is bad! Something went wrong!"
+            await interaction.edit_original_response(content=message_content)
+            return
+        await interaction.edit_original_response(content=None, embeds=embeds)
+        if something_found and not_found_main:
+            await interaction.followup.send("^^^^ Please report this message! ^^^^", wait=True, ephemeral=True)
+
 
     async def on_message(self, message):
         if message.guild is None:
@@ -94,6 +164,11 @@ class MyClient(discord.Client):
         if bool(message.author.guild_permissions.ban_members):
             for member in message.mentions:
                 if member.id == self.user.id:
+                    if "sync commands" in message.content and message.author.id == self.application.owner.id:
+                        log.info(f"Trying to sync commands for: {message.author}")
+                        await self.setup_hook()
+                        await message.reply(f"Synced commands, {message.author.mention}!")
+                        return
                     await message.reply(f"I hear you, {message.author.mention}!")
                     return
         try:

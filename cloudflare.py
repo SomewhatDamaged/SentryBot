@@ -42,18 +42,16 @@ class MyCloudflare:
         if self.client is not None:
             self.client.close()
 
-    def send_to_s3_blocking(self, image: Image.Image, name: str) -> bool:
+    def send_to_s3_blocking(self, image: io.BytesIO, name: str) -> bool:
         try:
-            io_image = io.BytesIO()
-            image.save(io_image, format="PNG")
-            io_image.seek(0)
-            self.client.upload_fileobj(io_image, self.cloudflare_config["BUCKET_NAME"], name)
+            image.seek(0)
+            self.client.upload_fileobj(image, self.cloudflare_config["BUCKET_NAME"], name)
             return True
         except Exception:
             log.exception("Something went wrong!")
             return False
 
-    async def send_to_s3(self, image: Image.Image, name: str) -> bool:
+    async def send_to_s3(self, image: io.BytesIO, name: str) -> bool:
         assert self.client is not None, "Config issue!"
         loop = asyncio.get_event_loop()
         blocking_io = functools.partial(self.send_to_s3_blocking,image, name)
