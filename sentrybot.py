@@ -47,8 +47,7 @@ class MyClient(discord.Client):
         log.info(f'Logged on as {self.user}!')
 
     @discord.app_commands.allowed_installs(guilds=True, users=True)
-    @discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-    @discord.app_commands.checks.cooldown(1, 30)
+    @discord.app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def context_menu_report(self, interaction: discord.Interaction, message: discord.Message):
         try:
             if self.cloudflare is None:
@@ -88,7 +87,7 @@ class MyClient(discord.Client):
             await interaction.edit_original_response(content="This is bad! Something went wrong!")
 
     @discord.app_commands.allowed_installs(guilds=True, users=True)
-    @discord.app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
+    @discord.app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def context_menu_inspect(self, interaction: discord.Interaction, message: discord.Message):
         embeds: list[discord.Embed] = []
         message_content = ""
