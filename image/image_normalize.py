@@ -20,19 +20,7 @@ def convert_to_png(image_in: BytesIO) -> Union[BytesIO, None, str]:
     try:
         image_out = BytesIO()
         with Image(file=image_in) as image:
-            detected_format = str(image.format).upper() if image.format else ""
-            detected_mime = str(image.mimetype).lower() if image.mimetype else ""
-            if (
-                    "HEIC" in detected_format or
-                    "HEIF" in detected_format or
-                    "AVIF" in detected_format or
-                    "heif" in detected_mime or
-                    "heic" in detected_mime or
-                    "avif" in detected_mime
-            ):
-                detected_formats = detected_format if detected_format else detected_mime
-                raise ValueError(f"Forbidden file format detected: {detected_formats}")
-                # Because XKCD https://xkcd.com/2347/ and https://heif-heist.com/
+            check_format(image.mimetype, image.format)
             image.convert("PNG")
             image.save(image_out)
         image_out.seek(0)
@@ -42,3 +30,13 @@ def convert_to_png(image_in: BytesIO) -> Union[BytesIO, None, str]:
             return str(e)
     except Exception:
         return None
+
+def check_format(image_mime: Union[str,None], image_format: Union[str,None]):
+    """Will raise a ValueError if image_mime or image_format are not supported"""
+    forbidden_formats = []
+    forbidden_formats += ["HEIF", "HEIC", "AVIF"] # Because XKCD https://xkcd.com/2347/ and https://heif-heist.com/
+    image_format = image_format.upper() if image_format else ""
+    image_mime = image_mime.upper() if image_mime else ""
+    for formats in forbidden_formats:
+        if formats in image_mime or formats in image_format:
+            raise ValueError(f"Forbidden file format detected: {formats}")
