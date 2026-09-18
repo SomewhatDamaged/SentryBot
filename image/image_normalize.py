@@ -4,7 +4,7 @@ from wand.image import Image
 from io import BytesIO
 import asyncio
 
-from sentrybot_exceptions import SentryBotException
+from sentrybot_exceptions import SentryBotException, ForbiddenImageFormatException
 
 async def convert_to_png_async(image_in) -> BytesIO:
     loop = asyncio.get_event_loop()
@@ -25,9 +25,8 @@ def convert_to_png(image_in: BytesIO) -> Union[BytesIO, None, str]:
             image.save(image_out)
         image_out.seek(0)
         return image_out
-    except ValueError as e:
-        if str(e).startswith("Forbidden file format detected: "):
-            return str(e)
+    except ForbiddenImageFormatException as e:
+        return str(e)
     except Exception:
         return None
 
@@ -39,4 +38,4 @@ def check_format(image_mime: Union[str,None], image_format: Union[str,None]):
     image_mime = image_mime.upper() if image_mime else ""
     for formats in forbidden_formats:
         if formats in image_mime or formats in image_format:
-            raise ValueError(f"Forbidden file format detected: {formats}")
+            raise ForbiddenImageFormatException(f"Forbidden file format detected: {formats}")

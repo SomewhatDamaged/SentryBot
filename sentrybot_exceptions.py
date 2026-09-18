@@ -20,3 +20,7 @@ class NotImageException(Exception):
 class URLException(Exception):
     def __init__(self, message: str):
         self.message = message
+
+class ForbiddenImageFormatException(Exception):
+    def __init__(self, message: str):
+        self.message = message
