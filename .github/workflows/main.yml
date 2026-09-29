@@ -1,0 +1,26 @@
+#workflow.yaml
+name: Build & Deploy
+on:
+  push:
+    branches: "main"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create SSH key
+        uses: appleboy/ssh-action@v1.0.3
+        with: 
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{secrets.KEY}}
+          port: 22
+          script: |
+            cd ~/bots/SentryBot
+            git fetch
+            git reset --hard
+            git pull
+#sudo systemctl restart SentryBot
