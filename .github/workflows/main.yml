@@ -8,21 +8,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Create SSH key
-        run: |
-          mkdir -p ~/.ssh/
-          echo "$KEY" > ../private.key
-          sudo chmod 600 ../private.key
-          echo "$HOSTS" > ~/.ssh/known_hosts
-        shell: bash
-        env:
-          SSH_PRIVATE_KEY: ${{secrets.KEY}}
-          SSH_KNOWN_HOSTS: ${{secrets.KNOWN_HOSTS}}
-          SSH_KEY_PATH: ${{ github.workspace }}/../private.key
-      - name: Deploy new version
-        run: |
-          cd ~/bots/SentryBot
-          git fetch
-          git reset --hard
-          git pull
-#sudo systemctl restart SentryBot
+        uses: appleboy/ssh-action@v1.0.3
+        with: 
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{secrets.KEY}}
+          port: 22
+          script: |
+            cd ~/bots/SentryBot
+            git pull origin main
+            #sudo systemctl restart SentryBot
