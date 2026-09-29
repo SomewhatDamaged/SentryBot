@@ -20,5 +20,7 @@ jobs:
           port: 22
           script: |
             cd ~/bots/SentryBot
-            git pull origin main
-            #sudo systemctl restart SentryBot
+            git fetch
+            git reset --hard
+            git pull
+#sudo systemctl restart SentryBot
