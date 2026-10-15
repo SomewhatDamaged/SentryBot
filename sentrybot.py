@@ -1,18 +1,16 @@
 import asyncio
 import io
-import traceback
 import os
 
 import discord
 from discord_features import check_message, notify_staff, clean_last_pinged, can_moderate, can_ban, can_delete, can_kick, timeout_member, kick_member, ban_member, delete_message, get_urls
-from asyncio import Lock
+from asyncio import Lock, Task
 from image import Downloader
 from mock_logging import MockLogger
 from moderation import Moderated
 from cloudflare import MyCloudflare
 from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 from typing import Union
-
 
 log = MockLogger()
 log.info(f"Begin logging.")
@@ -46,6 +44,7 @@ class MyClient(discord.Client):
         self.cloudflare = cloudflare
         self.app_info: Union[discord.AppInfo, None] = None
         self.owner: Union[discord.User, None] = None
+        self.notification_subroutine: Union[Task, None] = None
 
     async def setup_command_hook(self):
         """Runs when the bot is pinged and "sync commands" is sent."""
@@ -56,7 +55,7 @@ class MyClient(discord.Client):
         log.info(f'Logged on as {self.user}!')
         self.app_info = await self.application_info()
         self.owner: discord.User = self.app_info.owner
-        await self.check_for_new()
+        self.notification_subroutine = asyncio.create_task(self.check_for_new())
 
     async def get_stored(self, name: str = "") -> int:
         """Gets number of stored FOLDERS (not individual images)"""
@@ -96,7 +95,7 @@ class MyClient(discord.Client):
                     continue
                 if len(message.embeds) != 1:
                     continue
-                if not self.valid_embed(message.embeds[0].to_dict()):
+                if not self.valid_embed(dict(message.embeds[0].to_dict())):
                     continue
                 await self.delete_message(message)
 
@@ -139,7 +138,7 @@ class MyClient(discord.Client):
             except asyncio.exceptions.CancelledError:
                 pass
             except Exception:
-                traceback.print_exc()
+                log.exception("Error in notification loop.")
 
 
     @discord.app_commands.allowed_installs(guilds=True, users=True)
@@ -306,9 +305,14 @@ async def bot_init():
     except asyncio.exceptions.CancelledError:
         pass
     except Exception:
-        traceback.print_exc()
+        log.exception("Top-level error!")
     finally:
         await downloader.close()
+        if isinstance(client.notification_subroutine, asyncio.Task):
+            try:
+                client.notification_subroutine.cancel()
+            except Exception:
+                pass
 
 if __name__ == '__main__':
     asyncio.run(bot_init())
