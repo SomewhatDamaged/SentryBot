@@ -1,6 +1,7 @@
 import asyncio
 import io
 import traceback
+import os
 
 import discord
 from discord_features import check_message, notify_staff, clean_last_pinged, can_moderate, can_ban, can_delete, can_kick, timeout_member, kick_member, ban_member, delete_message, get_urls
@@ -16,13 +17,16 @@ log = MockLogger()
 log.info(f"Begin logging.")
 # Make a 'discord_token' file and put your token in it. Keep it safe.
 TOKEN: str = open('./discord_token').read().strip()
+# How long for the check of new images on Cloudflare R2 to wait. Default: 5 minutes
+SLEEP_TIME: int = int(os.environ.get('SLEEP_TIME', 300))
 
 
 # noinspection PyBroadException,PyMethodMayBeStatic,PyUnresolvedReferences
 class MyClient(discord.Client):
-    lock = Lock()
+    lock: asyncio.Lock = Lock()
 
     def __init__(self, downloader: Downloader, cloudflare: MyCloudflare, *args, **kwargs):
+        """If you don't know what this does, you're too new to be looking around Python code."""
         super().__init__(*args, **kwargs)
         self.source_ctx_menu = [
             discord.app_commands.ContextMenu(
@@ -39,12 +43,103 @@ class MyClient(discord.Client):
         for datum in self.source_ctx_menu:
             self.tree.add_command(datum)
         self.cloudflare = cloudflare
+        self.app_info: Union[discord.AppInfo, None] = None
+        self.owner: Union[discord.User, None] = None
 
-    async def setup_hook(self):
+    async def setup_command_hook(self):
+        """Runs when the bot is pinged and "sync commands" is sent."""
         await self.tree.sync()
 
     async def on_ready(self):
+        """This runs as soon as the bot is logged in and ready to do work."""
         log.info(f'Logged on as {self.user}!')
+        self.app_info = await self.application_info()
+        self.owner: discord.User = self.app_info.owner
+        await self.check_for_new()
+
+    async def get_stored(self, name: str = "") -> int:
+        """Gets number of stored FOLDERS (not individual images)"""
+        if self.cloudflare is None:
+            raise ValueError("Storage not configured!")
+        value = await self.cloudflare.has_folder(name=name, delimiter='/')
+        if value is None:
+            raise ValueError("Storage error!")
+        return value if value else 0
+
+    async def snooze(self):
+        """Eepy time"""
+        await asyncio.sleep(SLEEP_TIME)
+
+    def valid_embed(self, embed: dict) -> bool:
+        """Is this an embed I sent?"""
+        try:
+            if "flags" not in embed or int(embed["flags"]) != 0:
+                return False
+            if "type" not in embed or str(embed["type"]) != "rich":
+                return False
+            if "description" not in embed or not (str(embed["description"]).startswith("There ") and str(embed["description"]).endswith(" to process!")):
+                return False
+            if len(embed) != 3:
+                return False
+        except Exception:
+            return False
+        return True
+
+    async def remove_old(self, old_message: Union[discord.Message, None] = None, skip_message: Union[discord.Message, None] = None):
+        """Removes old messages from DMs"""
+        if isinstance(old_message, discord.Message):
+            await self.delete_message(old_message)
+        else:
+            async for message in self.owner.history(limit=100):
+                if skip_message and message.id == skip_message.id:
+                    continue
+                if len(message.embeds) != 1:
+                    continue
+                if not self.valid_embed(message.embeds[0].to_dict()):
+                    continue
+                await self.delete_message(message)
+
+    async def delete_message(self, message:discord.Message):
+        """Because regular delete is for losers who care about its success or failure.
+        Move fast; break everything."""
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
+    async def check_for_new(self):
+        """Checks storage. Notifies owner of bot if it has any image sets reported.
+        Cleans up after itself (not an electrician)."""
+        last_message: Union[discord.Message, None] = None
+        notify: int = -1
+        while True:
+            try:
+                if notify == -1:
+                    notify = 0
+                else:
+                    await self.snooze()
+                if self.cloudflare is None:
+                    continue
+                new_notify = await self.get_stored()
+                if new_notify == notify:
+                    continue
+                elif new_notify == 0:
+                    notify = 0
+                    await self.remove_old()
+                    continue
+                elif new_notify <= notify:
+                    notify = new_notify
+                    continue
+                embed = discord.Embed(description=f"There {'is' if new_notify == 1 else 'are'} {new_notify} new image {'set' if new_notify == 1 else 'sets'} to process!")
+                new_message = await self.owner.send(embed=embed)
+                await self.remove_old(last_message, new_message)
+                last_message = new_message
+                notify = new_notify
+            except asyncio.exceptions.CancelledError:
+                pass
+            except Exception:
+                traceback.print_exc()
+
 
     @discord.app_commands.allowed_installs(guilds=True, users=True)
     @discord.app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -58,11 +153,11 @@ class MyClient(discord.Client):
                 prefix = f"{message.channel.id}-{message.id}"
             else:
                 prefix = f"{message.guild.id}-{message.channel.id}-{message.id}"
-            if await self.cloudflare.has_folder('', delimiter='/') >= 500:
+            if await self.get_stored() >= 500:
                 await interaction.edit_original_response(content="Scam report storage full (500+)!")
                 log.debug("500+ reports filed!")
                 return
-            if await self.cloudflare.has_folder(prefix):
+            if await self.get_stored(prefix):
                 await interaction.edit_original_response(content="Message already reported!")
                 log.debug("Already on R2!")
                 return
@@ -165,7 +260,7 @@ class MyClient(discord.Client):
                 if member.id == self.user.id:
                     if "sync commands" in message.content and message.author.id == self.application.owner.id:
                         log.info(f"Trying to sync commands for: {message.author}")
-                        await self.setup_hook()
+                        await self.setup_command_hook()
                         await message.reply(f"Synced commands, {message.author.mention}!")
                         return
                     await message.reply(f"I hear you, {message.author.mention}!")
@@ -198,7 +293,7 @@ class MyClient(discord.Client):
 # noinspection PyDunderSlots,PyUnresolvedReferences,PyBroadException
 async def bot_init():
     log.info("Initializing bot...")
-    downloader = Downloader(useragent="SentryBot/" + open("./useragent").read().strip() + "/v1.1.1")
+    downloader = Downloader(useragent="SentryBot/" + open("./useragent").read().strip() + "/v1.1.2")
     cloudflare = MyCloudflare()
     intents = discord.Intents.default()
     intents.message_content = True
