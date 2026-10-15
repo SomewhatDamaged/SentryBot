@@ -116,6 +116,7 @@ class MyClient(discord.Client):
             try:
                 if notify == -1:
                     notify = 0
+                    await self.remove_old()
                 else:
                     await self.snooze()
                 if self.cloudflare is None:
@@ -155,11 +156,9 @@ class MyClient(discord.Client):
                 prefix = f"{message.guild.id}-{message.channel.id}-{message.id}"
             if await self.get_stored() >= 500:
                 await interaction.edit_original_response(content="Scam report storage full (500+)!")
-                log.debug("500+ reports filed!")
                 return
             if await self.get_stored(prefix):
                 await interaction.edit_original_response(content="Message already reported!")
-                log.debug("Already on R2!")
                 return
             urls = await get_urls(message)
             i: int = 0
