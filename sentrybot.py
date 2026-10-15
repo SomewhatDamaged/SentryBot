@@ -11,6 +11,7 @@ from mock_logging import MockLogger
 from moderation import Moderated
 from cloudflare import MyCloudflare
 from sentrybot_exceptions import SentryBotException, NotImageException, URLException
+from typing import Union
 
 
 log = MockLogger()
