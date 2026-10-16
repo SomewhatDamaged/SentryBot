@@ -182,7 +182,7 @@ async def notify_staff(message: discord.Message, moderated: Moderated) -> None:
             message_out += f"✅ Deleted {author.mention}'s (scam) messages\n"
         message_out += f"🗒️ Source: {moderated.source}\n"
         if moderated.source_data and "reasoning" in moderated.source_data:
-            message_out += f"🗒️ Reasoning:\n```\n{escape_discord_text(moderated.source_data["reasoning"])}\n```\n"
+            message_out += f"🗒️ Reasoning:\n```\n{escape_discord_text(moderated.source_data['reasoning'])}\n```\n"
         if not moderated.deleted:
             await message.reply(message_out, silent=False if moderated.banned or moderated.kicked else True)
         else:
