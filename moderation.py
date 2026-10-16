@@ -1,7 +1,3 @@
-from typing import Union
-
-from torch import _sources
-
 
 class Moderated:
     _muted: bool = False
