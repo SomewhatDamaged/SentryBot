@@ -7,8 +7,6 @@ import boto3
 import json
 import os
 import io
-from PIL import Image
-
 from mock_logging import MockLogger
 
 log = logging.getLogger()
@@ -75,4 +73,6 @@ class MyCloudflare:
         loop = asyncio.get_event_loop()
         blocking_io = functools.partial(self.has_folder_blocking,name, delimiter)
         return await loop.run_in_executor(None, blocking_io)
+
+
 

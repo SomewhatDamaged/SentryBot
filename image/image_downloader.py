@@ -1,9 +1,10 @@
-from typing import Union
+from typing import Union, Any
 
 import aiohttp
 import io
 
 import imagehash
+import base64
 
 from mock_logging import MockLogger
 from .image_process import phash, dimensions
@@ -11,8 +12,19 @@ from .image_normalize import convert_to_png_async
 from PIL import Image
 from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 from .split_images import split_two_images_async
+import os
+import json
 
 log = MockLogger()
+
+AI_MODEL = "@cf/moondream/moondream3.1-9B-A2B"
+PROMPT = """OCR this image. Output in JSON format:
+{
+  'text': a field that contains all the recognizable text
+  'scam': with the json values of \"false\" if it's not likely a scam, \"true\" if it is a scam
+}"""
+
+
 
 
 # make your own useragent file that has your email in it
@@ -24,10 +36,13 @@ HOW_CLOSE: int = 4 # This is a measure of how similar images should be. If they 
 #                    5-6 — hamming distance close (4-6) and dimensions almost exactly same
 
 class Downloader:
-
+    cloudflare_config: Union[dict, None] = None
     def __init__(self, useragent: str):
         self.session = aiohttp.ClientSession()
         self.headers = {"User-Agent": useragent}
+        if os.path.exists(".cloudflare_config.json"):
+            with open(".cloudflare_config.json", "r") as config:
+                self.cloudflare_config = json.load(config)
 
     async def close(self):
         await self.session.close()
@@ -63,12 +78,82 @@ class Downloader:
             return False
         raise SentryBotException(f"Website returned status '{response.status}' instead of 200 or 404", {})
 
-    async def get_hash(self, url: str) -> list[tuple[imagehash.ImageHash, list[int], str]]:
+    async def get_hash(self, url: str) -> tuple[list[tuple[imagehash.ImageHash, list[int], str]],Union[dict, None]]:
         image = await self.download_image(url)
-        output: list[tuple[imagehash.ImageHash, list[int], str]] = []
+        ocr_data = await self.ocr(image)
+        hash_data: list[tuple[imagehash.ImageHash, list[int], str]] = []
         images = await split_two_images_async(image)
         for data in images:
             image = Image.open(data["image"])
             result = (phash(image), dimensions(image), data["type"])
-            output.append(result)
-        return output
+            hash_data.append(result)
+        return hash_data, ocr_data
+
+    async def ocr(self, image: io.BytesIO) -> Union[dict, None]:
+        if self.cloudflare_config is None:
+            return None
+        if 'ACCOUNT_ID' not in self.cloudflare_config:
+            return None
+        if 'CLOUDFLARE_API_TOKEN' not in self.cloudflare_config:
+            return None
+
+        image.seek(0)
+        raw_image_bytes = image.getvalue()
+        base64_encoded = base64.b64encode(raw_image_bytes).decode('utf-8')
+        data_url = f"data:image/png;base64,{base64_encoded}"
+
+        url = f"https://api.cloudflare.com/client/v4/accounts/{self.cloudflare_config['ACCOUNT_ID']}/ai/run/{AI_MODEL}"
+        headers = {
+            "Authorization": f"Bearer {self.cloudflare_config['CLOUDFLARE_API_TOKEN']}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "image": data_url,
+            "task": "query",
+            "question": PROMPT,
+            "stream": True,
+            "reasoning": True,
+        }
+
+        output: dict = {
+            "answer":
+                {
+                },
+            "reasoning": ""
+        }
+        try:
+            response = await self.session.post(url, json=data, headers=headers)
+            if response.status == 200:
+                async for line_bytes in response.content:
+                    line = line_bytes.decode('utf-8').strip()
+                    if line.startswith("data:"):
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            data_chunk = json.loads(data_str)
+                            # Capture the text characters/words
+                            if "output" in data_chunk:
+                                values = json.loads(data_chunk["output"][-1]["answer"])
+                                output["answer"]["text"] = values.get("text", "")
+                                output["answer"]["scam"] = normalize_to_bool(values.get("scam", False))
+                                json.loads(data_chunk["output"][-1]["answer"])
+                                output["reasoning"] = data_chunk["output"][-1]["reasoning"]["text"]
+                                break
+                        except json.JSONDecodeError:
+                            continue
+                return output
+            else:
+                response_text = await response.text()
+                log.error(f"❌ Cloudflare REST API Error [HTTP {response.status}]: {response_text}")
+        except Exception as e:
+            log.exception(f"❌ Network execution failed while processing aiohttp request: {e}")
+        return None
+
+def normalize_to_bool(data: Any) -> bool:
+    if isinstance(data, bool):
+        return data
+    if isinstance(data, str):
+        if data.lower() == "true":
+            return True
+    return False

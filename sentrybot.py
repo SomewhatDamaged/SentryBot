@@ -8,7 +8,7 @@ from asyncio import Lock, Task
 from image import Downloader
 from mock_logging import MockLogger
 from moderation import Moderated
-from cloudflare import MyCloudflare
+from cloudflare_code import MyCloudflare
 from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 from typing import Union
 
@@ -266,19 +266,24 @@ class MyClient(discord.Client):
                     return
         try:
             async with self.lock:
-                if await check_message(message, self.downloader):
+                result = await check_message(message, self.downloader)
+                if result:
                     moderated = Moderated()
-                    if me and can_ban(me):
-                        await ban_member(message.author, message)
+                    moderated.source = result if isinstance(result, dict) else {}, 'OCR' if isinstance(result, dict) else result
+                    if me and can_ban(me) and moderated.source == 'phash':
+                        await ban_member(message.author, message, moderated)
                         moderated.banned = True
                         moderated.deleted = True
-                    elif me and can_kick(me):
-                        await kick_member(message.author, message)
+                    elif me and can_kick(me) and moderated.source == 'phash':
+                        await kick_member(message.author, message, moderated)
                         moderated.kicked = True
                     elif me and can_moderate(me):
-                        await timeout_member(message.author, message)
-                        moderated.muted = True
-                    if me and can_delete(me, message):
+                        worked = await timeout_member(message.author, message, moderated)
+                        if worked:
+                            moderated.muted = True
+                        else:
+                            moderated.muted_err = True
+                    if me and can_delete(me, message) and moderated.source == 'phash':
                         await delete_message(message, moderated)
                         moderated.deleted = True
                     clean_last_pinged()

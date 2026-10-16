@@ -33,17 +33,22 @@ async def get_urls(message: discord.Message) -> list:
     return items_to_check
 
 
-async def check_message(message: discord.Message, downloader: Downloader) -> Union[None, imagehash.ImageHash]:
+async def check_message(message: discord.Message, downloader: Downloader) -> Union[None, str, dict]:
     items_to_check = await get_urls(message)
     log.debug(f"{items_to_check = }")
     for url in items_to_check:
         try:
             log.info(f"Checking {url}")
-            image_metadata = await downloader.get_hash(url)
+            image_metadata, ocr_data = await downloader.get_hash(url)
             for p_hash, dimensions, image_type in image_metadata:
                 if await downloader.check_hash(p_hash, dimensions):
-                    log.debug(f"Found {p_hash} in {image_type} with dimensions {dimensions} in {url}")
-                    return p_hash
+                    log.info(f"Found {p_hash} in {image_type} with dimensions {dimensions} in {url}")
+                    return 'pHash'
+            if ocr_data is not None:
+                if "answer" in ocr_data and "scam" in ocr_data["answer"] and ocr_data['answer']['scam']:
+                    log.info(f"High score from OCR.\nText: {ocr_data['answer']['text']}")
+                    log.info(f"Reasoning: {ocr_data['reasoning']}")
+                    return ocr_data
         except NotImageException:
             log.info(f"URL not an image: {url}")
             continue
@@ -72,40 +77,45 @@ def fetch_data(message: Union[discord.Message, discord.MessageSnapshot]) -> list
         items_to_check.append(items)
     return items_to_check
 
-async def timeout_member(member: discord.Member, message: discord.Message) -> bool:
+async def timeout_member(member: discord.Member, message: discord.Message, moderated: Moderated) -> bool:
     try:
         if not too_recent(member): # Waaaay too soon to notify more.
-            success_one = await send_message(target=member, content=f"You are being timed out for sending crypto-scam images. If this was in error, please contact a moderator of {member.guild.name} to remove it.")
+            if moderated.source == "OCR":
+                await member.timeout(timedelta(hours=TIMEOUT_FOR), reason=f"SentyBot(Automated): Posted images that might be scams. Source: {moderated.source} ({TIMEOUT_FOR} hours)")
+            else:
+                await member.timeout(timedelta(hours=TIMEOUT_FOR), reason=f"SentyBot(Automated): Posted images that matched as scams. Source: {moderated.source} ({TIMEOUT_FOR} hours)")
+            success_one = await send_message(target=member, content=f"⚠️ You are being timed out for sending {'possible ' if moderated.source == 'OCR' else ''}scam images. If this was in error, please contact a moderator of {member.guild.name} to remove it. ⚠️")
             success_two = await send_message(target=member, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
                 log.exception(f"Unable to send 'timeout user' message to {member.display_name} ({message.author.id})")
-            await member.timeout(timedelta(hours=TIMEOUT_FOR), reason=f"SentyBot(Automated): Posted images that matched as crypto-scams. ({TIMEOUT_FOR} hours)")
-    except (discord.Forbidden, discord.HTTPException, TypeError, ValueError):
+    except discord.Forbidden:
+        return False
+    except (discord.HTTPException, TypeError, ValueError):
         log.exception()
         return False
     return True
 
-async def ban_member(member: discord.Member, message: discord.Message) -> bool:
+async def ban_member(member: discord.Member, message: discord.Message, moderated: Moderated) -> bool:
     try:
         if not too_recent(member): # Waaaay too soon to notify more.
-            success_one = await send_message(target=member, content=f"You are being banned for sending crypto-scam images. If this was in error, please contact a moderator of {member.guild.name} to remove it.")
+            success_one = await send_message(target=member, content=f"🛑 You are being banned for sending scam images. If this was in error, please contact a moderator of {member.guild.name} to remove it. 🛑")
             success_two = await send_message(target=member, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
                 log.exception(f"Unable to send 'banned user' message to {member.display_name} ({message.author.id})")
-            await member.ban(delete_message_seconds=60, reason="SentyBot(Automated): Sending crypto-scam messages. Deleted last 1min of messages.")
+            await member.ban(delete_message_seconds=60, reason="SentyBot(Automated): Sending scam messages. Deleted last 1min of messages.")
     except (discord.Forbidden, discord.HTTPException, discord.NotFound, ValueError, TypeError):
         log.exception()
         return False
     return True
 
-async def kick_member(member: discord.Member, message: discord.Message) -> bool:
+async def kick_member(member: discord.Member, message: discord.Message, moderated: Moderated) -> bool:
     try:
         if not too_recent(member): # Waaaay too soon to notify more.
-            success_one = await send_message(target=member, content=f"You are being kicked for sending crypto-scam images. If this was in error, please rejoin {member.guild.name}.")
+            success_one = await send_message(target=member, content=f"🛑 You are being kicked for sending scam images. If this was in error, please rejoin {member.guild.name}. 🛑")
             success_two = await send_message(target=member, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
                 log.exception(f"Unable to send 'kicked user' message to {member.display_name} ({message.author.id})")
-            await member.kick(reason="SentyBot(Automated): Sending crypto-scam messages. Deleted last 1min of messages.")
+            await member.kick(reason="SentyBot(Automated): Sending scam messages. Deleted last 1min of messages.")
     except (discord.Forbidden, discord.HTTPException, discord.NotFound, ValueError):
         log.exception()
         return False
@@ -116,7 +126,7 @@ async def delete_message(message: discord.Message, moderated: Moderated) -> bool
     assert isinstance(author, discord.Member)
     try:
         if not too_recent(author) and not moderated.moderated: # Waaaay too soon to notify more.
-            success_one = await send_message(target=author, content=f"Your message has been deleted as it was detected to have crypto-scam images. If this was in error, please contact a moderator of {message.guild}.")
+            success_one = await send_message(target=author, content=f"Your message has been deleted as it was detected to have scam images. If this was in error, please contact a moderator of {message.guild}.")
             success_two = await send_message(target=author, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
                 log.error(f"Unable to send 'deleted message' message to {message.author.display_name} ({message.author.id})")
@@ -156,18 +166,23 @@ async def notify_staff(message: discord.Message, moderated: Moderated) -> None:
     for member in guild.members:
         if is_moderator(member):
             mods.append(member)
-    message_out = "Yup, another crypto-image-scam\nPinging online/idle mods...\n"
+    message_out = "Looks like another scam\n✅ Pinging online/idle mods...\n"
     if mods:
         for member in mods:
             message_out += "- " + member.mention + "\n"
         if moderated.banned:
-            message_out += f"Banned {author.mention}\n"
+            message_out += f"✅ Banned {author.mention}\n"
         elif moderated.kicked:
-            message_out += f"Kicked {author.mention}\n"
+            message_out += f"✅ Kicked {author.mention}\n"
         elif moderated.muted:
-            message_out += f"Muted them for {TIMEOUT_FOR} hours (:\n"
+            message_out += f"✅ Muted them for {TIMEOUT_FOR} hours (:\n"
+        elif moderated.muted_err:
+            message_out += "⚠️ Tried to mute them, but my role isn't higher than theirs (please fix!)\n"
         if moderated.deleted:
-            message_out += f"Deleted {author.mention}'s (scam) messages\n"
+            message_out += f"✅ Deleted {author.mention}'s (scam) messages\n"
+        message_out += f"🗒️ Source: {moderated.source}\n"
+        if moderated.source_data and "reasoning" in moderated.source_data:
+            message_out += f"🗒️ Reasoning:\n```\n{escape_discord_text(moderated.source_data["reasoning"])}\n```\n"
         if not moderated.deleted:
             await message.reply(message_out, silent=False if moderated.banned or moderated.kicked else True)
         else:
@@ -175,7 +190,10 @@ async def notify_staff(message: discord.Message, moderated: Moderated) -> None:
         global LAST_PINGED
         LAST_PINGED[last_pinged_string(author)] = datetime.now(tz=timezone.utc)
     if not moderated.moderated:
-        success_one = await send_message(target=author, content="You are sending crypto-scam messages! Please secure your account!")
+        if moderated.source == "OCR":
+            success_one = await send_message(target=author, content="⚠️ You are sending possible scam messages! Please secure your account! ⚠️")
+        else:
+            success_one = await send_message(target=author, content="🛑 You are sending scam messages! Please secure your account! 🛑")
         success_two = await send_message(target=author, reference=message.to_reference(type=discord.MessageReferenceType.forward))
         if not success_one or not success_two:
             log.error(f"Unable to send 'deleted message' message to {message.author.display_name} ({message.author.id})")
@@ -205,3 +223,6 @@ def too_recent(author: discord.Member) -> bool:
     if pinged and datetime.now(tz=timezone.utc) - pinged < timedelta(minutes=DELAY_MINUTES):  # Waaaay too soon
         return True
     return False
+
+def escape_discord_text(text_in: str) -> str:
+    return text_in.replace('`', '\'')

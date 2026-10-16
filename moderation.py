@@ -1,8 +1,32 @@
+from typing import Union
+
+from torch import _sources
+
+
 class Moderated:
     _muted: bool = False
     _kicked: bool = False
     _banned: bool = False
     _deleted: bool = False
+    _source: str = ""
+    source_data: dict = {}
+    _muted_err: bool = False
+
+    @property
+    def source(self):
+        return self._source
+    @source.setter
+    def source(self, data: tuple[dict, str]):
+        self._source = data[1]
+        if isinstance(data[0], dict):
+            self.source_data = data[0]
+
+    @property
+    def muted_err(self):
+        return self._muted_err
+    @muted_err.setter
+    def muted_err(self, _ = None):
+        self._muted_err = True
 
     @property
     def muted(self):
