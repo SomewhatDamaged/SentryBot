@@ -272,11 +272,11 @@ class MyClient(discord.Client):
                 if result:
                     moderated = Moderated()
                     moderated.source = result if isinstance(result, dict) else {}, 'OCR' if isinstance(result, dict) else result
-                    if me and can_ban(me) and moderated.source == 'phash':
+                    if me and can_ban(me):
                         await ban_member(message.author, message, moderated)
                         moderated.banned = True
                         moderated.deleted = True
-                    elif me and can_kick(me) and moderated.source == 'phash':
+                    elif me and can_kick(me):
                         await kick_member(message.author, message, moderated)
                         moderated.kicked = True
                     elif me and can_moderate(me):
@@ -285,7 +285,7 @@ class MyClient(discord.Client):
                             moderated.muted = True
                         else:
                             moderated.muted_err = True
-                    if me and can_delete(me, message) and moderated.source == 'phash':
+                    if me and can_delete(me, message):
                         await delete_message(message, moderated)
                         moderated.deleted = True
                     clean_last_pinged()
