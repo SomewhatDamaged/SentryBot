@@ -44,15 +44,10 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
                 if await downloader.check_hash(p_hash, dimensions):
                     log.info(f"Found {p_hash} in {image_type} with dimensions {dimensions} in {url}")
                     return 'pHash'
-            if ocr_data is not None:
-                if "answer" in ocr_data and ocr_data["answer"]:
-                    if "scam" in ocr_data["answer"] and ocr_data['answer']['scam']:
-                        log.info(f"High score from OCR.\nText: {ocr_data['answer']['text']}")
-                        log.info(f"Reasoning: {ocr_data['reasoning']}")
-                    if int(ocr_data['score']) > 3 and "scam" in ocr_data["answer"] and ocr_data['answer']['scam']:
-                        return ocr_data
-                    # if int(ocr_data['score']) > 6:
-                    #     return ocr_data
+            if isinstance(ocr_data, dict) and ocr_data["match"]:
+                log.info(f"Match from OCR.\nMatching string: {ocr_data['match_string']}")
+                log.info(f"Distance: {ocr_data['distance']}")
+                return ocr_data
         except NotImageException:
             log.info(f"URL not an image: {url}")
             continue
@@ -185,8 +180,8 @@ async def notify_staff(message: discord.Message, moderated: Moderated) -> None:
         if moderated.deleted:
             message_out += f"✅ Deleted {author.mention}'s (scam) messages\n"
         message_out += f"🗒️ Source: {moderated.source}\n"
-        if moderated.source_data and "reasoning" in moderated.source_data:
-            message_out += f"🗒️ Reasoning:\n```\n{escape_discord_text(moderated.source_data['reasoning'])}\n```\n"
+        if moderated.source_data and "match_string" in moderated.source_data:
+            message_out += f"🗒️ Matching text:\n```\n{escape_discord_text(moderated.source_data['match_string'])}\n```  Distance (lower is closer): {moderated.source_data['distance']}\n\n"
         if not moderated.deleted:
             await message.reply(message_out, silent=False if moderated.banned or moderated.kicked else True)
         else:

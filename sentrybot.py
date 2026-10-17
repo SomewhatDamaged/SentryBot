@@ -45,6 +45,7 @@ class MyClient(discord.Client):
         self.app_info: Union[discord.AppInfo, None] = None
         self.owner: Union[discord.User, None] = None
         self.notification_subroutine: Union[Task, None] = None
+        self.update_string_scams_subroutine: Union[Task, None] = None
 
     async def setup_command_hook(self):
         """Runs when the bot is pinged and "sync commands" is sent."""
@@ -56,6 +57,7 @@ class MyClient(discord.Client):
         self.app_info = await self.application_info()
         self.owner: discord.User = self.app_info.owner
         self.notification_subroutine = asyncio.create_task(self.check_for_new())
+        self.update_string_scams_subroutine = asyncio.create_task(self.downloader.update_string_hashes())
 
     async def get_stored(self, name: str = "") -> int:
         """Gets number of stored FOLDERS (not individual images)"""
@@ -311,6 +313,11 @@ async def bot_init():
     except Exception:
         log.exception("Top-level error!")
     finally:
+        if isinstance(client.update_string_scams_subroutine, asyncio.Task):
+            try:
+                client.update_string_scams_subroutine.cancel()
+            except Exception:
+                pass
         await downloader.close()
         if isinstance(client.notification_subroutine, asyncio.Task):
             try:

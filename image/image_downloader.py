@@ -13,18 +13,15 @@ from .image_normalize import convert_to_png_async
 from PIL import Image
 from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 from .split_images import split_two_images_async
+from .compare import TextCompare
 import os
 import json
 
 log = MockLogger()
 
 AI_MODEL = "@cf/moondream/moondream3.1-9B-A2B"
-PROMPT = """OCR this image. Output in JSON format:
-{
-  'text': a field that contains all the recognizable text
-  'scam': with the json values of \"false\" if it's not likely a scam, \"true\" if it is a scam
-}"""
-
+PROMPT = """OCR this image. Output only the OCRed text without line breaks."""
+POLLING_DELAY = 5 # polling delay to get new scam strings in minutes
 
 # make your own useragent file that has your email in it
 
@@ -46,9 +43,27 @@ class Downloader:
         if os.path.exists("keywords.json"):
             with open("keywords.json", "r") as file:
                 self.keywords = json.load(file)
+        self.text_hashing = TextCompare()
+
 
     async def close(self):
         await self.session.close()
+
+    async def update_string_hashes(self):
+        while True:
+            try:
+                url = "https://api.excessive.space/v1/scam_strings_list"
+                response, data = await self.http_get(url)
+                if response.status != 200:
+                    raise SentryBotException(f"scam_string_list endpoint seems broken (status: {response.status})")
+                if data and isinstance(data, list):
+                    self.text_hashing.build_hash_index(data)
+                    self.text_hashing.known_scams = data
+                else:
+                    raise SentryBotException("scam_string_list endpoint isn't returning a list!")
+            except Exception:
+                log.exception("Exception raised in update_string_hashes")
+            await asyncio.sleep(POLLING_DELAY * 60)
 
     async def download_image(self, url: str) -> io.BytesIO:
         async with self.session.get(url, headers=self.headers) as response:
@@ -83,16 +98,16 @@ class Downloader:
 
     async def get_hash(self, url: str) -> tuple[list[tuple[imagehash.ImageHash, list[int], str]],Union[dict, None]]:
         image = await self.download_image(url)
-        ocr_data = await self.ocr(image)
+        ocr_result = self.analyze_ocr(await self.ocr(image))
         hash_data: list[tuple[imagehash.ImageHash, list[int], str]] = []
         images = await split_two_images_async(image)
         for data in images:
             image = Image.open(data["image"])
             result = (phash(image), dimensions(image), data["type"])
             hash_data.append(result)
-        return hash_data, ocr_data
+        return hash_data, ocr_result
 
-    async def ocr(self, image: io.BytesIO) -> Union[dict, None]:
+    async def ocr(self, image: io.BytesIO) -> Union[str, None]:
         if self.cloudflare_config is None:
             return None
         if 'ACCOUNT_ID' not in self.cloudflare_config:
@@ -141,40 +156,30 @@ class Downloader:
                                 data_chunk = json.loads(data_str)
                                 # Capture the text characters/words
                                 if "output" in data_chunk:
-                                    values = json.loads(data_chunk["output"][-1]["answer"])
-                                    output["answer"]["text"] = normalize_to_str(values.get("text", ""))
-                                    output["answer"]["scam"] = normalize_to_bool(values.get("scam", False))
-                                    json.loads(data_chunk["output"][-1]["answer"])
-                                    output["reasoning"] = data_chunk["output"][-1]["reasoning"]["text"]
-                                    output["score"] = self.keyword_score(output["answer"]["text"])
-                                    break
+                                    output: str = normalize_to_str(data_chunk["output"][-1].get("answer", ""))
+                                    return output.replace("\n", " ")
                             except json.JSONDecodeError:
                                 continue
-                return output
             else:
                 response_text = await response.text()
-                log.error(f"❌ Cloudflare REST API Error [HTTP {response.status}]: {response_text}")
+                log.error(f"Cloudflare REST API Error [HTTP {response.status}]: {response_text}")
         except asyncio.TimeoutError:
             return None
-        except Exception as e:
-            log.exception(f"❌ Network execution failed while processing aiohttp request: {e}")
+        except Exception:
+            log.exception(f"Something fucked up while processing aiohttp request")
         return None
 
-    def keyword_score(self, text: str) -> int:
-        score = 0
-        text = text.lower()
-        for words in self.keywords:
-            if words in text:
-                score += 1
-        return score
-
-def normalize_to_bool(data: Any) -> bool:
-    if isinstance(data, bool):
-        return data
-    if isinstance(data, str):
-        if data.lower() == "true":
-            return True
-    return False
+    def analyze_ocr(self, text: Union[str, None]) -> dict:
+        if text is None:
+            return {"match": False}
+        hit, hit_string, distance = self.text_hashing.check_against_hash_index(text)
+        if not hit:
+            return {"match": False}
+        return {
+            "match": True,
+            "match_string": hit_string,
+            "distance": distance
+        }
 
 def normalize_to_str(data: Any) -> str:
     if isinstance(data, str):
