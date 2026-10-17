@@ -20,7 +20,7 @@ import json
 log = MockLogger()
 
 AI_MODEL = "@cf/moondream/moondream3.1-9B-A2B"
-PROMPT = """OCR this image. Output only the OCRed text without line breaks."""
+PROMPT = """OCR this image. Only output the OCRed text."""
 POLLING_DELAY = 5 # polling delay to get new scam strings in minutes
 
 # make your own useragent file that has your email in it
@@ -36,7 +36,7 @@ class Downloader:
     keywords: list[str] = []
     def __init__(self, useragent: str):
         self.session = aiohttp.ClientSession()
-        self.headers = {"User-Agent": useragent}
+        self.headers = {"user-agent": useragent}
         if os.path.exists(".cloudflare_config.json"):
             with open(".cloudflare_config.json", "r") as config:
                 self.cloudflare_config = json.load(config)
@@ -76,6 +76,10 @@ class Downloader:
             buffer = io.BytesIO(await response.read())
             buffer = await convert_to_png_async(buffer)
             return buffer
+
+    async def http_post(self, url: str, headers: dict, data: dict) -> aiohttp.ClientResponse:
+        headers = {**self.headers, **headers}
+        return await self.session.post(url, headers=headers, json=data)
 
     async def http_get(self, url: str) -> tuple[aiohttp.ClientResponse, Union[list, dict]]:
         async with self.session.get(url, headers=self.headers) as response:
@@ -133,18 +137,8 @@ class Downloader:
             "stream": True,
             "reasoning": True,
         }
-
-        output: dict = {
-            "answer":
-                {
-                    "text": "",
-                    "scam": False
-                },
-            "reasoning": "",
-            "score": 0
-        }
         try:
-            response = await self.session.post(url, json=data, headers=headers)
+            response = await self.http_post(url, data=data, headers=headers)
             if response.status == 200:
                 async with asyncio.timeout(8):
                     async for line_bytes in response.content:
