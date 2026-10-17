@@ -123,6 +123,7 @@ class Downloader:
         url = f"https://api.cloudflare.com/client/v4/accounts/{self.cloudflare_config['ACCOUNT_ID']}/ai/run/{AI_MODEL}"
         headers = {
             "Authorization": f"Bearer {self.cloudflare_config['CLOUDFLARE_API_TOKEN']}",
+            "cf-aig-gateway-id": self.cloudflare_config['GATEWAY_ID'],
             "Content-Type": "application/json"
         }
         data = {
