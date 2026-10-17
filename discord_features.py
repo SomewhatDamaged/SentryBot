@@ -45,10 +45,13 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
                     log.info(f"Found {p_hash} in {image_type} with dimensions {dimensions} in {url}")
                     return 'pHash'
             if ocr_data is not None:
-                if "answer" in ocr_data and "scam" in ocr_data["answer"] and ocr_data['answer']['scam']:
+                if "answer" in ocr_data and ocr_data["answer"]:
                     log.info(f"High score from OCR.\nText: {ocr_data['answer']['text']}")
                     log.info(f"Reasoning: {ocr_data['reasoning']}")
-                    return ocr_data
+                    if int(ocr_data['score']) > 3 and "scam" in ocr_data["answer"] and ocr_data['answer']['scam']:
+                        return ocr_data
+                    # if int(ocr_data['score']) > 6:
+                    #     return ocr_data
         except NotImageException:
             log.info(f"URL not an image: {url}")
             continue

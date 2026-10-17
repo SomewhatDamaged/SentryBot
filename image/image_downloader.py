@@ -1,3 +1,4 @@
+import asyncio
 from typing import Union, Any
 
 import aiohttp
@@ -25,8 +26,6 @@ PROMPT = """OCR this image. Output in JSON format:
 }"""
 
 
-
-
 # make your own useragent file that has your email in it
 
 HOW_CLOSE: int = 4 # This is a measure of how similar images should be. If they match exactly, or are within 3 distance, it will always be 8-10
@@ -37,12 +36,16 @@ HOW_CLOSE: int = 4 # This is a measure of how similar images should be. If they 
 
 class Downloader:
     cloudflare_config: Union[dict, None] = None
+    keywords: list[str] = []
     def __init__(self, useragent: str):
         self.session = aiohttp.ClientSession()
         self.headers = {"User-Agent": useragent}
         if os.path.exists(".cloudflare_config.json"):
             with open(".cloudflare_config.json", "r") as config:
                 self.cloudflare_config = json.load(config)
+        if os.path.exists("keywords.json"):
+            with open("keywords.json", "r") as file:
+                self.keywords = json.load(file)
 
     async def close(self):
         await self.session.close()
@@ -80,7 +83,9 @@ class Downloader:
 
     async def get_hash(self, url: str) -> tuple[list[tuple[imagehash.ImageHash, list[int], str]],Union[dict, None]]:
         image = await self.download_image(url)
+        log.debug("Trying OCR")
         ocr_data = await self.ocr(image)
+        log.debug(f"OCR Result: {ocr_data}")
         hash_data: list[tuple[imagehash.ImageHash, list[int], str]] = []
         images = await split_two_images_async(image)
         for data in images:
@@ -118,37 +123,55 @@ class Downloader:
         output: dict = {
             "answer":
                 {
+                    "text": "",
+                    "scam": False
                 },
-            "reasoning": ""
+            "reasoning": "",
+            "score": 0
         }
         try:
             response = await self.session.post(url, json=data, headers=headers)
             if response.status == 200:
-                async for line_bytes in response.content:
-                    line = line_bytes.decode('utf-8').strip()
-                    if line.startswith("data:"):
-                        data_str = line[5:].strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            data_chunk = json.loads(data_str)
-                            # Capture the text characters/words
-                            if "output" in data_chunk:
-                                values = json.loads(data_chunk["output"][-1]["answer"])
-                                output["answer"]["text"] = values.get("text", "")
-                                output["answer"]["scam"] = normalize_to_bool(values.get("scam", False))
-                                json.loads(data_chunk["output"][-1]["answer"])
-                                output["reasoning"] = data_chunk["output"][-1]["reasoning"]["text"]
+                async with asyncio.timeout(8):
+                    async for line_bytes in response.content:
+                        line = line_bytes.decode('utf-8').strip()
+                        if line.startswith("data:"):
+                            data_str = line[5:].strip()
+                            if data_str == "[DONE]":
                                 break
-                        except json.JSONDecodeError:
-                            continue
+                            try:
+                                data_chunk = json.loads(data_str)
+                                # Capture the text characters/words
+                                if "output" in data_chunk:
+                                    values = json.loads(data_chunk["output"][-1]["answer"])
+                                    output["answer"]["text"] = values.get("text", "")
+                                    output["answer"]["scam"] = normalize_to_bool(values.get("scam", False))
+                                    json.loads(data_chunk["output"][-1]["answer"])
+                                    output["reasoning"] = data_chunk["output"][-1]["reasoning"]["text"]
+                                    output["score"] = self.keyword_score(output["answer"]["text"])
+                                    break
+                            except json.JSONDecodeError:
+                                continue
+                log.debug(output)
                 return output
             else:
                 response_text = await response.text()
                 log.error(f"❌ Cloudflare REST API Error [HTTP {response.status}]: {response_text}")
+        except asyncio.TimeoutError:
+            return None
         except Exception as e:
             log.exception(f"❌ Network execution failed while processing aiohttp request: {e}")
         return None
+
+    def keyword_score(self, text: str) -> int:
+        log.debug(self.keywords)
+        score = 0
+        text = text.lower()
+        for words in self.keywords:
+            if words in text:
+                log.debug(f"Found {words}\nScore: {score}")
+                score += 1
+        return score
 
 def normalize_to_bool(data: Any) -> bool:
     if isinstance(data, bool):
