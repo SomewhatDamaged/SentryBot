@@ -144,7 +144,8 @@ class Downloader:
                                 # Capture the text characters/words
                                 if "output" in data_chunk:
                                     values = json.loads(data_chunk["output"][-1]["answer"])
-                                    output["answer"]["text"] = values.get("text", "")
+                                    log.debug(values)
+                                    output["answer"]["text"] = normalize_to_str(values.get("text", ""))
                                     output["answer"]["scam"] = normalize_to_bool(values.get("scam", False))
                                     json.loads(data_chunk["output"][-1]["answer"])
                                     output["reasoning"] = data_chunk["output"][-1]["reasoning"]["text"]
@@ -152,7 +153,6 @@ class Downloader:
                                     break
                             except json.JSONDecodeError:
                                 continue
-                log.debug(output)
                 return output
             else:
                 response_text = await response.text()
@@ -164,12 +164,10 @@ class Downloader:
         return None
 
     def keyword_score(self, text: str) -> int:
-        log.debug(self.keywords)
         score = 0
         text = text.lower()
         for words in self.keywords:
             if words in text:
-                log.debug(f"Found {words}\nScore: {score}")
                 score += 1
         return score
 
@@ -180,3 +178,12 @@ def normalize_to_bool(data: Any) -> bool:
         if data.lower() == "true":
             return True
     return False
+
+def normalize_to_str(data: Any) -> str:
+    if isinstance(data, str):
+        return data
+    if isinstance(data, bytes):
+        return data.decode('utf-8')
+    if isinstance(data, list):
+        return " ".join(data)
+    return str(data)
