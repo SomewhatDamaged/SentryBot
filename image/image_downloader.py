@@ -83,9 +83,7 @@ class Downloader:
 
     async def get_hash(self, url: str) -> tuple[list[tuple[imagehash.ImageHash, list[int], str]],Union[dict, None]]:
         image = await self.download_image(url)
-        log.debug("Trying OCR")
         ocr_data = await self.ocr(image)
-        log.debug(f"OCR Result: {ocr_data}")
         hash_data: list[tuple[imagehash.ImageHash, list[int], str]] = []
         images = await split_two_images_async(image)
         for data in images:
@@ -144,7 +142,6 @@ class Downloader:
                                 # Capture the text characters/words
                                 if "output" in data_chunk:
                                     values = json.loads(data_chunk["output"][-1]["answer"])
-                                    log.debug(values)
                                     output["answer"]["text"] = normalize_to_str(values.get("text", ""))
                                     output["answer"]["scam"] = normalize_to_bool(values.get("scam", False))
                                     json.loads(data_chunk["output"][-1]["answer"])
