@@ -32,8 +32,13 @@ You need to have 3 config files to use all the features.
   "SECRET_ACCESS_KEY": "",
   "S3_API_ENDPOINT": "",
   "BUCKET_NAME": ""
+  "CLOUDFLARE_API_TOKEN": "",
+  "ACCOUNT_ID": "",
+  "GATEWAY_ID": ""
 }
 ```
+
+The `CLOUDFLARE_API_TOKEN` is needed for the OCR using CLoudflare's AI systems, as is `ACCOUNT_ID` and `GATEWAY_ID`
 
 ## There are two context menu commands:
 
