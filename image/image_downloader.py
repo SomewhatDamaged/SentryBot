@@ -7,6 +7,7 @@ import io
 import imagehash
 import base64
 
+import timeout_decorator
 from mock_logging import MockLogger
 from .image_process import phash, dimensions
 from .image_normalize import convert_to_png_async
@@ -100,18 +101,26 @@ class Downloader:
             return False
         raise SentryBotException(f"Website returned status '{response.status}' instead of 200 or 404", {})
 
-    async def get_hash(self, url: str) -> tuple[list[tuple[imagehash.ImageHash, list[int], str]],Union[dict, None]]:
-        image = await self.download_image(url)
-        ocr_result = self.analyze_ocr(await self.ocr(image))
+    @timeout_decorator.async_timeout(10)
+    async def get_hash_and_ocr(self, url: str) -> tuple[list[tuple[imagehash.ImageHash, list[int], str]],Union[dict, None]]:
+        image = await self.download_image(url) # Download image
+        async with asyncio.TaskGroup() as group:
+            ocr_task = group.create_task(self.get_ocr(image)) # Start task to OCR
+            hash_task = group.create_task(self.get_hash(image)) # Start task to hash
+        ocr_result = self.analyze_ocr(ocr_task.result())
+        hash_data = hash_task.result()
+        return hash_data, ocr_result
+
+    async def get_hash(self, image: io.BytesIO) -> list[tuple[imagehash.ImageHash, list[int], str]]:
         hash_data: list[tuple[imagehash.ImageHash, list[int], str]] = []
         images = await split_two_images_async(image)
         for data in images:
             image = Image.open(data["image"])
             result = (phash(image), dimensions(image), data["type"])
             hash_data.append(result)
-        return hash_data, ocr_result
+        return hash_data
 
-    async def ocr(self, image: io.BytesIO) -> Union[str, None]:
+    async def get_ocr(self, image: io.BytesIO) -> Union[str, None]:
         if self.cloudflare_config is None:
             return None
         if 'ACCOUNT_ID' not in self.cloudflare_config:

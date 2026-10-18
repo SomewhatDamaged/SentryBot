@@ -1,8 +1,7 @@
+import asyncio
 import logging
 import re
 from typing import Union
-
-import imagehash
 
 import discord
 
@@ -39,7 +38,7 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
     for url in items_to_check:
         try:
             log.info(f"Checking {url}")
-            image_metadata, ocr_data = await downloader.get_hash(url)
+            image_metadata, ocr_data = await downloader.get_hash_and_ocr(url)
             for p_hash, dimensions, image_type in image_metadata:
                 if await downloader.check_hash(p_hash, dimensions):
                     log.info(f"Found {p_hash} in {image_type} with dimensions {dimensions} in {url}")
@@ -55,6 +54,8 @@ async def check_message(message: discord.Message, downloader: Downloader) -> Uni
             log.info(f"Dead URL: {url}")
         except SentryBotException:
             log.exception(f"URL: {url}")
+        except asyncio.TimeoutError:
+            log.info(f"Timeout: {url}")
         except Exception:
             log.exception(f"URL: {url}")
     return None
