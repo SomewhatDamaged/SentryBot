@@ -17,7 +17,7 @@ log.info(f"Begin logging.")
 # Make a 'discord_token' file and put your token in it. Keep it safe.
 TOKEN: str = open('./discord_token').read().strip()
 # How long for the check of new images on Cloudflare R2 to wait. Default: 5 minutes
-SLEEP_TIME: int = int(os.environ.get('SLEEP_TIME', 300))
+SLEEP_TIME: int = int(os.environ.get('SLEEP_TIME', 60))
 
 
 # noinspection PyBroadException,PyMethodMayBeStatic,PyUnresolvedReferences
@@ -123,6 +123,7 @@ class MyClient(discord.Client):
                     await self.snooze()
                 if self.cloudflare is None:
                     continue
+                await asyncio.sleep(POLLING_DELAY)
                 new_notify = await self.get_stored()
                 if new_notify == notify:
                     continue
