@@ -13,6 +13,7 @@ import discord
 import os
 import psutil
 import logging
+import time
 
 from sentrybot_exceptions import NotImageException, URLException, SentryBotException
 
@@ -24,14 +25,14 @@ EMAIL = open("./useragent").read().strip()
 VERSION = open("./version").read().strip()
 
 pid = os.getpid()
-process = psutil.Process(pid)
+process_info = psutil.Process(pid)
 
 class MemoryStats(NamedTuple):
     memory_used: int
     memory_free: int
 
 def memory_stats() -> MemoryStats:
-    memory_bytes = process.memory_info().rss
+    memory_bytes = process_info.memory_info().rss
     total_bytes = psutil.virtual_memory().total
     return MemoryStats(memory_bytes, total_bytes)
 
@@ -40,17 +41,34 @@ class TaskMemAverage():
     last_ten_tasks: list[int] = []
 
     def add(self, memory_used: int):
+        if memory_used == 0:
+            return
         self.last_ten_tasks.append(memory_used)
         while len(self.last_ten_tasks) > 10:
             self.last_ten_tasks.pop(0)
         self.average_mem_per_task = int(sum(self.last_ten_tasks) / len(self.last_ten_tasks))
 
     @property
+    def memory_info(self) -> MemoryStats:
+        memory_data = memory_stats()
+        return memory_data
+
+    @property
     def proceed(self):
         if self.average_mem_per_task == 0:
             return True
         memory_data = memory_stats()
-        return self.average_mem_per_task * 2.0 < memory_data.memory_free
+        return max(self.last_ten_tasks) * 2.0 < memory_data.memory_free
+
+class TaskTimeAverage():
+    average_time_per_task: float = 0
+    last_ten_tasks: list[float] = []
+
+    def add(self, time_used: float):
+        self.last_ten_tasks.append(time_used)
+        while len(self.last_ten_tasks) > 10:
+            self.last_ten_tasks.pop(0)
+        self.average_time_per_task = float(sum(self.last_ten_tasks) / len(self.last_ten_tasks))
 
 class ProcessingQueue:
     queue = []
@@ -59,6 +77,7 @@ class ProcessingQueue:
     queue_mutex = Lock()
     actioning_mutex = Lock()
     mem_tracker = TaskMemAverage()
+    time_tracker = TaskTimeAverage()
     bot: discord.ClientUser = None
 
     def __init__(self, bot: discord.ClientUser|None, downloader: Downloader):
@@ -93,22 +112,30 @@ class ProcessingQueue:
         if len(self.queue) == 0:
             log.debug(f"Empty queue")
             return
+        tasks: list[asyncio.Task] = []
         async with self.processing_mutex:
-            async with TaskGroup() as group:
-                log.debug(f"Processing queue")
-                while len(self.queue) > 0:
-                    log.debug(f"Queue has {len(self.queue)} items")
-                    datum: dict = await self._get()
-                    for url in datum["urls"]:
-                        log.debug(f"Processing {url}")
-                        log.debug("Waiting for memory...")
-                        while not self.mem_tracker.proceed:
-                            await sleep(0.1)
-                        log.debug(f"Memory free!")
-                        group.create_task(self.process_image(datum["message"], url))
-                        log.debug("Looking for more to process...")
+            log.debug(f"Processing queue")
+            while len(self.queue) > 0:
+                log.debug(f"Queue has {len(self.queue)} items")
+                datum: dict = await self._get()
+                for url in datum["urls"]:
+                    log.debug(f"Processing {url}")
+                    log.debug("Waiting for memory/tasks...")
+                    while not self.mem_tracker.proceed or len(tasks) >= 4:
+                        await sleep(0.2)
+                        tasks = self.check_tasks(tasks)
+                    log.debug(f"Memory/tasks free!")
+                    await sleep(0.5)
+                    tasks.append(create_task(self.process_image(datum["message"], url)))
+                    log.debug("Looking for more to process...")
         log.debug(f"Emptied queue")
 
+    def check_tasks(self, tasklist: list[asyncio.Task]):
+        tasks_out: list[asyncio.Task] = []
+        for task in tasklist:
+            if not task.done():
+                tasks_out.append(task)
+        return tasks_out
 
     async def process_image(self, message: discord.Message, url: str):
         try:
@@ -118,15 +145,17 @@ class ProcessingQueue:
             guild: discord.Guild = member.guild
             if self.is_actioned(member = member, guild=guild):
                 return
+            start = time.time()
             tracemalloc.start()
             tracemalloc.reset_peak()
-            _, peak_before = tracemalloc.get_traced_memory()
             # begin task here
             data = await self._process_image(member, url)
             # end task
-            _, peak_after = tracemalloc.get_traced_memory()
+            _, peak = tracemalloc.get_traced_memory()
             tracemalloc.stop()
-            self.mem_tracker.add(peak_after - peak_before)
+            end = time.time()
+            self.time_tracker.add(end - start)
+            self.mem_tracker.add(peak)
             if data is not None and data:
                 create_task(self.action(message, data))
         except Exception:
