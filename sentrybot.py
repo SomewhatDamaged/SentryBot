@@ -3,14 +3,14 @@ import io
 import os
 
 import discord
-from discord_features import check_message, notify_staff, clean_last_pinged, can_moderate, can_ban, can_delete, can_kick, timeout_member, kick_member, ban_member, delete_message, get_urls
+from discord_features import get_urls
 from asyncio import Lock, Task
 from image import Downloader
 from mock_logging import MockLogger
-from moderation import Moderated
 from cloudflare_code import MyCloudflare
 from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 from typing import Union
+from processing_queue import ProcessingQueue
 
 log = MockLogger()
 log.info(f"Begin logging.")
@@ -23,6 +23,7 @@ SLEEP_TIME: int = int(os.environ.get('SLEEP_TIME', 60))
 # noinspection PyBroadException,PyMethodMayBeStatic,PyUnresolvedReferences
 class MyClient(discord.Client):
     lock: asyncio.Lock = Lock()
+    queue: ProcessingQueue|None = None
 
     def __init__(self, downloader: Downloader, cloudflare: MyCloudflare, *args, **kwargs):
         """If you don't know what this does, you're too new to be looking around Python code."""
@@ -56,6 +57,7 @@ class MyClient(discord.Client):
         log.info(f'Logged on as {self.user}!')
         self.app_info = await self.application_info()
         self.owner: discord.User = self.app_info.owner
+        self.queue = ProcessingQueue(self.user, self.downloader)
         self.notification_subroutine = asyncio.create_task(self.check_for_new())
         self.update_string_scams_subroutine = asyncio.create_task(self.downloader.update_string_hashes())
 
@@ -267,39 +269,18 @@ class MyClient(discord.Client):
                     await message.reply(f"I hear you, {message.author.mention}!")
                     return
         try:
-            async with self.lock:
-                result = await check_message(message, self.downloader)
-                if result:
-                    moderated = Moderated()
-                    moderated.source = result if isinstance(result, dict) else {}, 'OCR' if isinstance(result, dict) else result
-                    if me and can_ban(me):
-                        await ban_member(message.author, message, moderated)
-                        moderated.banned = True
-                        moderated.deleted = True
-                    elif me and can_kick(me):
-                        await kick_member(message.author, message, moderated)
-                        moderated.kicked = True
-                    elif me and can_moderate(me):
-                        worked = await timeout_member(message.author, message, moderated)
-                        if worked:
-                            moderated.muted = True
-                        else:
-                            moderated.muted_err = True
-                    if me and can_delete(me, message):
-                        await delete_message(message, moderated)
-                        moderated.deleted = True
-                    clean_last_pinged()
-                    await notify_staff(message, moderated)
-                    return
-                return
+            urls = await get_urls(message)
+            await self.queue.add(message, urls)
         except Exception:
             log.exception("Something went wrong!")
 
+EMAIL = open("./useragent").read().strip()
+VERSION = open("./version").read().strip()
 
 # noinspection PyDunderSlots,PyUnresolvedReferences,PyBroadException
 async def bot_init():
     log.info("Initializing bot...")
-    downloader = Downloader(useragent="SentryBot/" + open("./useragent").read().strip() + "/v1.1.2")
+    downloader = Downloader("SentryBot/" + EMAIL + "/v" + VERSION)
     cloudflare = MyCloudflare()
     intents = discord.Intents.default()
     intents.message_content = True
@@ -322,6 +303,11 @@ async def bot_init():
         if isinstance(client.notification_subroutine, asyncio.Task):
             try:
                 client.notification_subroutine.cancel()
+            except Exception:
+                pass
+        if client.queue is not None and isinstance(client.queue.cleanup, asyncio.Task):
+            try:
+                await client.close()
             except Exception:
                 pass
 

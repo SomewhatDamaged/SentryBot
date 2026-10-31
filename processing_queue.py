@@ -1,0 +1,211 @@
+import asyncio
+from asyncio import Lock, TaskGroup, create_task, sleep
+import tracemalloc
+from datetime import datetime, timezone, timedelta
+from typing import NamedTuple, Union
+
+from image import Downloader
+from mock_logging import MockLogger
+from moderation import Moderated
+from discord_features import notify_staff, can_moderate, can_ban, can_delete, can_kick, timeout_member, kick_member, ban_member, delete_message
+
+import discord
+import os
+import psutil
+import logging
+
+from sentrybot_exceptions import NotImageException, URLException, SentryBotException
+
+log = logging.getLogger()
+if log is not None:
+    log = MockLogger()
+
+EMAIL = open("./useragent").read().strip()
+VERSION = open("./version").read().strip()
+
+pid = os.getpid()
+process = psutil.Process(pid)
+
+class MemoryStats(NamedTuple):
+    memory_used: int
+    memory_free: int
+
+def memory_stats() -> MemoryStats:
+    memory_bytes = process.memory_info().rss
+    total_bytes = psutil.virtual_memory().total
+    return MemoryStats(memory_bytes, total_bytes)
+
+class TaskMemAverage():
+    average_mem_per_task: int = 0
+    last_ten_tasks: list[int] = []
+
+    def add(self, memory_used: int):
+        self.last_ten_tasks.append(memory_used)
+        while len(self.last_ten_tasks) > 10:
+            self.last_ten_tasks.pop(0)
+        self.average_mem_per_task = int(sum(self.last_ten_tasks) / len(self.last_ten_tasks))
+
+    @property
+    def proceed(self):
+        if self.average_mem_per_task == 0:
+            return True
+        memory_data = memory_stats()
+        return self.average_mem_per_task * 2.0 < memory_data.memory_free
+
+class ProcessingQueue:
+    queue = []
+    actioned: dict[str,str] = {}
+    processing_mutex = Lock()
+    queue_mutex = Lock()
+    actioning_mutex = Lock()
+    mem_tracker = TaskMemAverage()
+    bot: discord.ClientUser = None
+
+    def __init__(self, bot: discord.ClientUser|None, downloader: Downloader):
+        if bot is None:
+            raise TypeError("bot cannot be None")
+        self.bot = bot
+        self.downloader = downloader
+        self.cleanup = create_task(self.clean_actioned())
+
+    async def close(self):
+        if self.cleanup is not None and not self.cleanup.done():
+            self.cleanup.cancel()
+
+    async def add(self, message: discord.Message, urls: list):
+        log.debug(f"Adding {message.id} to queue")
+        create_task(self._add(message, urls))
+
+    async def _add(self, message: discord.Message, urls: list):
+        async with self.queue_mutex:
+            self.queue.append({"message": message, "urls": urls})
+        log.debug(f"Added {message.id} to queue")
+        if self.queue_mutex.locked():
+            return
+        create_task(self._process_queue())
+
+    async def _get(self) -> dict:
+        log.debug(f"Getting from queue")
+        async with self.queue_mutex:
+            return self.queue.pop(0)
+
+    async def _process_queue(self):
+        if len(self.queue) == 0:
+            log.debug(f"Empty queue")
+            return
+        async with self.processing_mutex:
+            async with TaskGroup() as group:
+                log.debug(f"Processing queue")
+                while len(self.queue) > 0:
+                    log.debug(f"Queue has {len(self.queue)} items")
+                    datum: dict = await self._get()
+                    for url in datum["urls"]:
+                        log.debug(f"Processing {url}")
+                        log.debug("Waiting for memory...")
+                        while not self.mem_tracker.proceed:
+                            await sleep(0.1)
+                        log.debug(f"Memory free!")
+                        group.create_task(self.process_image(datum["message"], url))
+                        log.debug("Looking for more to process...")
+        log.debug(f"Emptied queue")
+
+
+    async def process_image(self, message: discord.Message, url: str):
+        try:
+            if not isinstance(message.author, discord.Member):
+                return
+            member: discord.Member = message.author
+            guild: discord.Guild = member.guild
+            if self.is_actioned(member = member, guild=guild):
+                return
+            tracemalloc.start()
+            tracemalloc.reset_peak()
+            _, peak_before = tracemalloc.get_traced_memory()
+            # begin task here
+            data = await self._process_image(member, url)
+            # end task
+            _, peak_after = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+            self.mem_tracker.add(peak_after - peak_before)
+            if data is not None and data:
+                create_task(self.action(message, data))
+        except Exception:
+            log.exception(f"Error processing {url}")
+
+    async def _process_image(self, member: discord.Member, url: str) -> Union[None, str, dict]:
+        try:
+            log.info(f"Checking {url}")
+            image_metadata, ocr_data = await self.downloader.get_hash_and_ocr(url)
+            for p_hash, dimensions, image_type in image_metadata:
+                if await self.downloader.check_hash(p_hash, dimensions):
+                    log.info(f"Found {p_hash} in {image_type} with dimensions {dimensions} in {url}")
+                    return 'pHash'
+            if isinstance(ocr_data, dict) and ocr_data["match"]:
+                log.info(f"Match from OCR.\nMatching string: {ocr_data['match_string']}")
+                log.info(f"Distance: {ocr_data['distance']}")
+                return ocr_data
+        except NotImageException:
+            log.info(f"URL not an image: {url}")
+        except URLException:
+            log.info(f"Dead URL: {url}")
+        except SentryBotException:
+            log.exception(f"URL: {url}")
+        except asyncio.TimeoutError:
+            log.info(f"Timeout: {url}")
+        except Exception:
+            log.exception(f"URL: {url}")
+        return None
+
+    async def action(self, message: discord.Message, data: Union[str, dict]):
+        if not isinstance(message.guild, discord.Guild):
+            return
+        if not isinstance(message.author, discord.Member):
+            return
+        member: discord.Member = message.author
+        guild: discord.Guild = member.guild
+        me = await message.guild.fetch_member(self.bot.id)
+        async with self.actioning_mutex:
+            moderated = Moderated()
+            moderated.source = data if isinstance(data, dict) else {}, 'OCR' if isinstance(data, dict) else data
+            if not self.is_actioned(member = message.author, guild = guild, message = message):
+                if me and can_ban(me):
+                    await ban_member(message.author, message, moderated)
+                    moderated.banned = True
+                    moderated.deleted = True
+                elif me and can_kick(me):
+                    await kick_member(message.author, message, moderated)
+                    moderated.kicked = True
+                elif me and can_moderate(me):
+                    worked = await timeout_member(message.author, message, moderated)
+                    if worked:
+                        moderated.muted = True
+                    else:
+                        moderated.muted_err = True
+                if me and can_delete(me, message):
+                    await delete_message(message, moderated)
+                    moderated.deleted = True
+            if not self.is_actioned(member = message.author, guild = guild):
+                await notify_staff(message, moderated)
+            now = datetime.now(tz=timezone.utc)
+            self.actioned[now.isoformat()] = f"{member.id}|{message.id}|{guild.id}"
+
+    async def clean_actioned(self):
+        while True:
+            await sleep(60 * 10)
+            async with self.actioning_mutex:
+                expired = datetime.now(tz=timezone.utc)
+                for key in list(self.actioned.keys()):
+                    pinged: datetime = datetime.fromisoformat(key)
+                    if pinged and expired - pinged > timedelta(minutes=10):
+                        del self.actioned[key]
+
+    def is_actioned(self, member: discord.Member, guild: discord.Guild, message: discord.Message|None = None) -> bool:
+        if message is not None:
+            return f"{member.id}|{message.id}|{guild.id}" in self.actioned.values()
+        for _, action in self.actioned.items():
+            if not action.startswith(str(member.id)):
+                continue
+            if not action.endswith(str(guild.id)):
+                continue
+            return True
+        return False
