@@ -123,7 +123,6 @@ class MyClient(discord.Client):
                     await self.snooze()
                 if self.cloudflare is None:
                     continue
-                await asyncio.sleep(POLLING_DELAY)
                 new_notify = await self.get_stored()
                 if new_notify == notify:
                     continue
