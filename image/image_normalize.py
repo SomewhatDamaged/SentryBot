@@ -31,7 +31,7 @@ def convert_to_png(image_in: BytesIO) -> Union[BytesIO, None, str]:
         return None
 
 def check_format(image_mime: Union[str,None], image_format: Union[str,None]):
-    """Will raise a ValueError if image_mime or image_format are not supported"""
+    """Will raise a ForbiddenImageFormatException if image_mime or image_format are not supported"""
     forbidden_formats = []
     forbidden_formats += ["HEIF", "HEIC", "AVIF"] # Because XKCD https://xkcd.com/2347/ and https://heif-heist.com/
     image_format = image_format.upper() if image_format else ""
