@@ -80,9 +80,11 @@ class ProcessingQueue:
     bot: discord.ClientUser = None
     cleanup: asyncio.Task = None
 
-    def __init__(self, bot: discord.ClientUser|None, downloader: Downloader):
+    def __init__(self, bot: discord.ClientUser|None = None, downloader: Downloader|None = None):
         if bot is None:
             raise TypeError("bot cannot be None")
+        if downloader is None:
+            raise TypeError("downloader cannot be None")
         self.bot = bot
         self.downloader = downloader
         self.cleanup = create_task(self.clean_actioned())
