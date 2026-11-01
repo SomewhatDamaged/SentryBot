@@ -1,13 +1,9 @@
-import asyncio
 import logging
 import re
 from typing import Union
 
 import discord
-
-from image import Downloader
 from datetime import datetime, timezone, timedelta
-from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 from mock_logging import MockLogger
 from moderation import Moderated
 
@@ -30,35 +26,6 @@ async def get_urls(message: discord.Message) -> list:
         items_to_check += fetch_data(message)
     items_to_check = list(set(items_to_check))
     return items_to_check
-
-
-async def check_message(message: discord.Message, downloader: Downloader) -> Union[None, str, dict]:
-    items_to_check = await get_urls(message)
-    log.debug(f"{items_to_check = }")
-    for url in items_to_check:
-        try:
-            log.info(f"Checking {url}")
-            image_metadata, ocr_data = await downloader.get_hash_and_ocr(url)
-            for p_hash, dimensions, image_type in image_metadata:
-                if await downloader.check_hash(p_hash, dimensions):
-                    log.info(f"Found {p_hash} in {image_type} with dimensions {dimensions} in {url}")
-                    return 'pHash'
-            if isinstance(ocr_data, dict) and ocr_data["match"]:
-                log.info(f"Match from OCR.\nMatching string: {ocr_data['match_string']}")
-                log.info(f"Distance: {ocr_data['distance']}")
-                return ocr_data
-        except NotImageException:
-            log.info(f"URL not an image: {url}")
-            continue
-        except URLException:
-            log.info(f"Dead URL: {url}")
-        except SentryBotException:
-            log.exception(f"URL: {url}")
-        except asyncio.TimeoutError:
-            log.info(f"Timeout: {url}")
-        except Exception:
-            log.exception(f"URL: {url}")
-    return None
 
 def fetch_data(message: Union[discord.Message, discord.MessageSnapshot]) -> list:
     items_to_check = []

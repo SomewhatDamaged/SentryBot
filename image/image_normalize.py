@@ -30,6 +30,10 @@ def convert_to_png(image_in: BytesIO) -> Union[BytesIO, None, str]:
     except Exception:
         return None
 
+def get_image_mime(image_in: BytesIO) -> str:
+    with Image(file=image_in) as image:
+        return image.mimetype.lower()
+
 def check_format(image_mime: Union[str,None], image_format: Union[str,None]):
     """Will raise a ForbiddenImageFormatException if image_mime or image_format are not supported"""
     forbidden_formats = []

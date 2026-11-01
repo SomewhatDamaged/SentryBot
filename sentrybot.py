@@ -3,14 +3,16 @@ import io
 import os
 
 import discord
-from discord_features import check_message, notify_staff, clean_last_pinged, can_moderate, can_ban, can_delete, can_kick, timeout_member, kick_member, ban_member, delete_message, get_urls
+from discord_features import get_urls
 from asyncio import Lock, Task
-from image import Downloader
+from image import Downloader, get_image_mime
 from mock_logging import MockLogger
-from moderation import Moderated
 from cloudflare_code import MyCloudflare
 from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 from typing import Union
+from processing_queue import ProcessingQueue
+from human_bytes import HumanBytes
+from datetime import timedelta
 
 log = MockLogger()
 log.info(f"Begin logging.")
@@ -19,10 +21,10 @@ TOKEN: str = open('./discord_token').read().strip()
 # How long for the check of new images on Cloudflare R2 to wait. Default: 5 minutes
 SLEEP_TIME: int = int(os.environ.get('SLEEP_TIME', 60))
 
-
 # noinspection PyBroadException,PyMethodMayBeStatic,PyUnresolvedReferences
 class MyClient(discord.Client):
     lock: asyncio.Lock = Lock()
+    queue: ProcessingQueue|None = None
 
     def __init__(self, downloader: Downloader, cloudflare: MyCloudflare, *args, **kwargs):
         """If you don't know what this does, you're too new to be looking around Python code."""
@@ -56,6 +58,7 @@ class MyClient(discord.Client):
         log.info(f'Logged on as {self.user}!')
         self.app_info = await self.application_info()
         self.owner: discord.User = self.app_info.owner
+        self.queue = ProcessingQueue(self.user, self.downloader)
         self.notification_subroutine = asyncio.create_task(self.check_for_new())
         self.update_string_scams_subroutine = asyncio.create_task(self.downloader.update_string_hashes())
 
@@ -167,7 +170,9 @@ class MyClient(discord.Client):
             for url in urls:
                 try:
                     image: io.BytesIO = await self.downloader.download_image(url)
-                    result = await self.cloudflare.send_to_s3(image=image, name=f"{prefix}/image{i}.png")
+                    mime_type = get_image_mime(image)
+                    image_type = mime_type.split("/")[1]
+                    result = await self.cloudflare.send_to_s3(image=image, name=f"{prefix}/image{i}.{image_type}")
                     if not result:
                         log.error(f"Image upload error! URL: {url}")
                     else:
@@ -255,51 +260,48 @@ class MyClient(discord.Client):
             return
         if message.author.bot:
             return
-        me = await message.guild.fetch_member(self.user.id)
-        if bool(message.author.guild_permissions.ban_members):
-            for member in message.mentions:
-                if member.id == self.user.id:
-                    if "sync commands" in message.content and message.author.id == self.application.owner.id:
-                        log.info(f"Trying to sync commands for: {message.author}")
-                        await self.setup_command_hook()
-                        await message.reply(f"Synced commands, {message.author.mention}!")
-                        return
-                    await message.reply(f"I hear you, {message.author.mention}!")
-                    return
         try:
-            async with self.lock:
-                result = await check_message(message, self.downloader)
-                if result:
-                    moderated = Moderated()
-                    moderated.source = result if isinstance(result, dict) else {}, 'OCR' if isinstance(result, dict) else result
-                    if me and can_ban(me):
-                        await ban_member(message.author, message, moderated)
-                        moderated.banned = True
-                        moderated.deleted = True
-                    elif me and can_kick(me):
-                        await kick_member(message.author, message, moderated)
-                        moderated.kicked = True
-                    elif me and can_moderate(me):
-                        worked = await timeout_member(message.author, message, moderated)
-                        if worked:
-                            moderated.muted = True
-                        else:
-                            moderated.muted_err = True
-                    if me and can_delete(me, message):
-                        await delete_message(message, moderated)
-                        moderated.deleted = True
-                    clean_last_pinged()
-                    await notify_staff(message, moderated)
-                    return
-                return
+            me = await message.guild.fetch_member(self.user.id)
+            if bool(message.author.guild_permissions.ban_members):
+                for member in message.mentions:
+                    if member.id == self.user.id:
+                        if "sync commands" in message.content and message.author.id == self.application.owner.id:
+                            log.info(f"Trying to sync commands for: {message.author}")
+                            await self.setup_command_hook()
+                            await message.reply(f"Synced commands, {message.author.mention}!")
+                            return
+                        if "check data" in message.content and message.author.id == self.application.owner.id:
+                            log.info(f"Checking data for: {message.author}")
+                            memory_info = self.queue.mem_tracker.memory_info
+                            memory_data = self.queue.mem_tracker.average_mem_per_task
+                            max_mem = int(max(self.queue.mem_tracker.last_ten_tasks))
+                            time_data = str(timedelta(seconds=round(self.queue.time_tracker.average_time_per_task, 2)))
+                            def clean_timedelta(s: str) -> str:
+                                while s[-1] == '0':
+                                    s = s[:-1]
+                                s = s.split(":", 1)[1]
+                                return s
+                            message_text = f"Average memory per task: {HumanBytes.format(memory_data)}\n"
+                            message_text += f"Max memory for last 10 tasks: {HumanBytes.format(max_mem)}\n"
+                            message_text += f"Free memory: {HumanBytes.format(memory_info.memory_free)}\n"
+                            message_text += f"Average time per task: {clean_timedelta(time_data)}\n"
+                            await message.reply(message_text)
+                            return
+                        # ...
+                        await message.reply(f"I hear you, {message.author.mention}!")
+                        return
+            urls = await get_urls(message)
+            await self.queue.add(message, urls)
         except Exception:
             log.exception("Something went wrong!")
 
+EMAIL = open("./useragent").read().strip()
+VERSION = open("./version").read().strip()
 
 # noinspection PyDunderSlots,PyUnresolvedReferences,PyBroadException
 async def bot_init():
     log.info("Initializing bot...")
-    downloader = Downloader(useragent="SentryBot/" + open("./useragent").read().strip() + "/v1.1.2")
+    downloader = Downloader("SentryBot/" + EMAIL + "/v" + VERSION)
     cloudflare = MyCloudflare()
     intents = discord.Intents.default()
     intents.message_content = True
@@ -322,6 +324,11 @@ async def bot_init():
         if isinstance(client.notification_subroutine, asyncio.Task):
             try:
                 client.notification_subroutine.cancel()
+            except Exception:
+                pass
+        if client.queue is not None and isinstance(client.queue.cleanup, asyncio.Task):
+            try:
+                await client.close()
             except Exception:
                 pass
 
