@@ -1,8 +1,8 @@
 import asyncio
-from asyncio import Lock, TaskGroup, create_task, sleep
 import tracemalloc
 from datetime import datetime, timezone, timedelta
 from typing import NamedTuple, Union
+from asyncio import Lock, create_task, sleep
 
 from image import Downloader
 from mock_logging import MockLogger
@@ -36,7 +36,8 @@ def memory_stats() -> MemoryStats:
     total_bytes = psutil.virtual_memory().total
     return MemoryStats(memory_bytes, total_bytes)
 
-class TaskMemAverage():
+
+class TaskMemAverage:
     average_mem_per_task: int = 0
     last_ten_tasks: list[int] = []
 
@@ -60,7 +61,7 @@ class TaskMemAverage():
         memory_data = memory_stats()
         return max(self.last_ten_tasks) * 2.0 < memory_data.memory_free
 
-class TaskTimeAverage():
+class TaskTimeAverage:
     average_time_per_task: float = 0
     last_ten_tasks: list[float] = []
 
@@ -92,43 +93,32 @@ class ProcessingQueue:
             self.cleanup.cancel()
 
     async def add(self, message: discord.Message, urls: list):
-        log.debug(f"Adding {message.id} to queue")
         create_task(self._add(message, urls))
 
     async def _add(self, message: discord.Message, urls: list):
         async with self.queue_mutex:
             self.queue.append({"message": message, "urls": urls})
-        log.debug(f"Added {message.id} to queue")
         if self.queue_mutex.locked():
             return
         create_task(self._process_queue())
 
     async def _get(self) -> dict:
-        log.debug(f"Getting from queue")
         async with self.queue_mutex:
             return self.queue.pop(0)
 
     async def _process_queue(self):
         if len(self.queue) == 0:
-            log.debug(f"Empty queue")
             return
         tasks: list[asyncio.Task] = []
         async with self.processing_mutex:
-            log.debug(f"Processing queue")
             while len(self.queue) > 0:
-                log.debug(f"Queue has {len(self.queue)} items")
                 datum: dict = await self._get()
                 for url in datum["urls"]:
-                    log.debug(f"Processing {url}")
-                    log.debug("Waiting for memory/tasks...")
                     while not self.mem_tracker.proceed or len(tasks) >= 4:
                         await sleep(0.2)
                         tasks = self.check_tasks(tasks)
-                    log.debug(f"Memory/tasks free!")
                     await sleep(0.5)
                     tasks.append(create_task(self.process_image(datum["message"], url)))
-                    log.debug("Looking for more to process...")
-        log.debug(f"Emptied queue")
 
     def check_tasks(self, tasklist: list[asyncio.Task]):
         tasks_out: list[asyncio.Task] = []
@@ -149,7 +139,7 @@ class ProcessingQueue:
             tracemalloc.start()
             tracemalloc.reset_peak()
             # begin task here
-            data = await self._process_image(member, url)
+            data = await self._process_image(url)
             # end task
             _, peak = tracemalloc.get_traced_memory()
             tracemalloc.stop()
@@ -161,7 +151,7 @@ class ProcessingQueue:
         except Exception:
             log.exception(f"Error processing {url}")
 
-    async def _process_image(self, member: discord.Member, url: str) -> Union[None, str, dict]:
+    async def _process_image(self, url: str) -> Union[None, str, dict]:
         try:
             log.info(f"Checking {url}")
             image_metadata, ocr_data = await self.downloader.get_hash_and_ocr(url)
