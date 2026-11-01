@@ -8,7 +8,6 @@ import imagehash
 import base64
 
 import timeout_decorator
-from mock_logging import MockLogger
 from .image_process import phash, dimensions
 from .image_normalize import convert_to_png_async
 from PIL import Image
@@ -18,7 +17,9 @@ from .compare import TextCompare
 import os
 import json
 
-log = MockLogger()
+from my_logging import make_logger, process_exception
+
+log = make_logger()
 
 AI_MODEL = "@cf/moondream/moondream3.1-9B-A2B"
 PROMPT = """OCR this image. Only output the OCRed text."""
@@ -46,10 +47,6 @@ class Downloader:
                 self.keywords = json.load(file)
         self.text_hashing = TextCompare()
 
-
-    async def close(self):
-        await self.session.close()
-
     async def update_string_hashes(self):
         while True:
             try:
@@ -62,8 +59,10 @@ class Downloader:
                     self.text_hashing.known_scams = data
                 else:
                     raise SentryBotException("scam_string_list endpoint isn't returning a list!")
+            except asyncio.CancelledError:
+                raise
             except Exception:
-                log.exception("Exception raised in update_string_hashes")
+                process_exception("Exception raised in update_string_hashes")
             await asyncio.sleep(POLLING_DELAY * 60)
 
     async def download_image(self, url: str) -> io.BytesIO:
@@ -170,7 +169,7 @@ class Downloader:
         except asyncio.TimeoutError:
             return None
         except Exception:
-            log.exception(f"Something fucked up while processing aiohttp request")
+            process_exception(f"Something fucked up while processing aiohttp request")
         return None
 
     def analyze_ocr(self, text: Union[str, None]) -> dict:

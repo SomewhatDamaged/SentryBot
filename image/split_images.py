@@ -5,9 +5,9 @@ from typing import Union
 import cv2
 import numpy as np
 
-from mock_logging import MockLogger
+from my_logging import make_logger, process_exception
 
-log = MockLogger()
+log = make_logger()
 
 def is_much_wider_than_tall(img: np.ndarray) -> bool:
     height, width, _ = img.shape
@@ -34,7 +34,7 @@ def split_two_images(image: BytesIO) -> list[dict[str,Union[BytesIO,str]]]:
             output.append({"type": f"cropped:{part}", "image": BytesIO(image_out)})
         return output
     except Exception:
-        log.exception()
+        process_exception()
         return [{"type": "orig", "image": image}]
 
 async def split_two_images_async(image: BytesIO) -> list[dict]:

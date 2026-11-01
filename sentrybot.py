@@ -6,7 +6,7 @@ import discord
 from discord_features import get_urls
 from asyncio import Lock, Task
 from image import Downloader, get_image_mime
-from mock_logging import MockLogger
+from my_logging import make_logger, process_exception
 from cloudflare_code import MyCloudflare
 from sentrybot_exceptions import SentryBotException, NotImageException, URLException
 from typing import Union
@@ -14,8 +14,9 @@ from processing_queue import ProcessingQueue
 from human_bytes import HumanBytes
 from datetime import timedelta
 
-log = MockLogger()
-log.info(f"Begin logging.")
+log = make_logger()
+
+
 # Make a 'discord_token' file and put your token in it. Keep it safe.
 TOKEN: str = open('./discord_token').read().strip()
 # How long for the check of new images on Cloudflare R2 to wait. Default: 5 minutes
@@ -86,6 +87,8 @@ class MyClient(discord.Client):
                 return False
             if len(embed) != 3:
                 return False
+        except asyncio.CancelledError:
+            raise
         except Exception:
             return False
         return True
@@ -141,10 +144,10 @@ class MyClient(discord.Client):
                 await self.remove_old(last_message, new_message)
                 last_message = new_message
                 notify = new_notify
-            except asyncio.exceptions.CancelledError:
-                pass
+            except asyncio.CancelledError:
+                raise
             except Exception:
-                log.exception("Error in notification loop.")
+                log.process_exception("Error in notification loop.")
 
 
     @discord.app_commands.allowed_installs(guilds=True, users=True)
@@ -178,13 +181,13 @@ class MyClient(discord.Client):
                     else:
                         i = i + 1
                 except Exception:
-                    log.exception("Something went wrong!")
+                    log.process_exception("Something went wrong!")
             if i:
                 await interaction.edit_original_response(content="Done!")
             else:
                 await interaction.edit_original_response(content="No images found!")
         except Exception:
-            log.exception("Something went wrong!")
+            log.process_exception("Something went wrong!")
             await interaction.edit_original_response(content="This is bad! Something went wrong!")
 
     @discord.app_commands.allowed_installs(guilds=True, users=True)
@@ -234,19 +237,19 @@ class MyClient(discord.Client):
                     embeds[-1].description += f"Dead URL"
                     await interaction.edit_original_response(content=message_content, embeds=embeds)
                 except SentryBotException as e:
-                    log.exception(f"URL: {url}")
+                    log.process_exception(f"URL: {url}")
                     embed = discord.Embed(description=f"Something crashed!\n{e}")
                     await interaction.edit_original_response(content=message_content, embed=embed)
                     return
                 except Exception:
-                    log.exception(f"URL: {url}")
+                    log.process_exception(f"URL: {url}")
                     embeds[-1].description += f"Something crashed!"
                     await interaction.edit_original_response(content=message_content, embeds=embeds)
                 finally:
                     embeds[-1].description += "\n```"
 
         except Exception:
-            log.exception("Something went wrong!")
+            log.process_exception("Something went wrong!")
             message_content = "\n### This is bad! Something went wrong!"
             await interaction.edit_original_response(content=message_content)
             return
@@ -296,7 +299,7 @@ class MyClient(discord.Client):
             urls = await get_urls(message)
             await self.queue.add(message, urls)
         except Exception:
-            log.exception("Something went wrong!")
+            log.process_exception("Something went wrong!")
 
 EMAIL = open("./useragent").read().strip()
 VERSION = open("./version").read().strip()
@@ -312,28 +315,50 @@ async def bot_init():
     intents.presences = True
     client = MyClient(intents=intents, downloader=downloader, cloudflare=cloudflare)
     try:
+        log.log(100, "Bot Starting")
         await client.start(TOKEN, reconnect=True)
     except asyncio.exceptions.CancelledError:
         pass
     except Exception:
-        log.exception("Top-level error!")
+        process_exception("Top-level error!")
     finally:
-        if isinstance(client.update_string_scams_subroutine, asyncio.Task):
+        tasks = {
+            "queue cleanup": client.queue.cleanup, # queue processing cleanup task
+            "new scam image": client.notification_subroutine, # notification of new scam images task
+            "strings update": client.update_string_scams_subroutine # check for new scam strings task
+        }
+        for name_of_task, task in tasks.items():
             try:
-                client.update_string_scams_subroutine.cancel()
+                if task is None:
+                    continue
+                if not isinstance(task, asyncio.Task):
+                    continue
+                if task.done():
+                    continue
+                if task.cancelled():
+                    continue
+                if task.done():
+                    log.log(100, "Task \"" + name_of_task + "\" is already stopped")
+                    continue
+                log.log(100, "Task \"" + name_of_task + "\" is being cancelled")
+                task.cancel()
+                while not task.done():
+                    await asyncio.sleep(0.1)
+                log.log(100, "Task \"" + name_of_task + "\" has stopped")
             except Exception:
-                pass
-        await downloader.close()
-        if isinstance(client.notification_subroutine, asyncio.Task):
-            try:
-                client.notification_subroutine.cancel()
-            except Exception:
-                pass
-        if client.queue is not None and isinstance(client.queue.cleanup, asyncio.Task):
-            try:
-                await client.close()
-            except Exception:
-                pass
+                process_exception(f"Something went wrong while ending task: {name_of_task}")
+        try:
+            if client.cloudflare.client is not None:
+                client.cloudflare.client.close() # Close boto client
+                log.log(100, "boto client closed")
+        except Exception:
+            process_exception(f"Something went wrong while closing boto")
+        try:
+            await client.downloader.session.close() # Close aiohttp client
+            log.log(100, "aiohttp session closed")
+        except Exception:
+            process_exception(f"Something went wrong while closing aiohttp")
+    log.log(100, "Bot Shutdown")
 
 if __name__ == '__main__':
     asyncio.run(bot_init())

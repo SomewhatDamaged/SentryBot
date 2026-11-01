@@ -1,15 +1,14 @@
-import logging
+import os
 import re
 from typing import Union
 
 import discord
 from datetime import datetime, timezone, timedelta
-from mock_logging import MockLogger
 from moderation import Moderated
 
-log = logging.getLogger()
-if log is not None:
-    log = MockLogger()
+from my_logging import make_logger, process_exception
+
+log = make_logger()
 
 LAST_PINGED: dict = {} # Keeps track of how long ago a ping went out on server
 DELAY_MINUTES: int = 5 # How long to wait between pings
@@ -51,11 +50,11 @@ async def timeout_member(member: discord.Member, message: discord.Message, moder
             success_one = await send_message(target=member, content=f"⚠️ You are being timed out for sending scam images. If this was in error, please contact a moderator of {member.guild.name} to remove it. ⚠️")
             success_two = await send_message(target=member, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
-                log.exception(f"Unable to send 'timeout user' message to {member.display_name} ({message.author.id})")
+                log.warning(f"Unable to send 'timeout user' message to {member.display_name} ({message.author.id})")
     except discord.Forbidden:
         return False
     except (discord.HTTPException, TypeError, ValueError):
-        log.exception()
+        process_exception()
         return False
     return True
 
@@ -65,10 +64,10 @@ async def ban_member(member: discord.Member, message: discord.Message, moderated
             success_one = await send_message(target=member, content=f"🛑 You are being banned for sending scam images. If this was in error, please contact a moderator of {member.guild.name} to remove it. 🛑")
             success_two = await send_message(target=member, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
-                log.exception(f"Unable to send 'banned user' message to {member.display_name} ({message.author.id})")
+                log.warning(f"Unable to send 'banned user' message to {member.display_name} ({message.author.id})")
             await member.ban(delete_message_seconds=60, reason=f"SentyBot(Automated): Sending scam messages. Source: {moderated.source}. Deleted last 1min of messages.")
     except (discord.Forbidden, discord.HTTPException, discord.NotFound, ValueError, TypeError):
-        log.exception()
+        process_exception()
         return False
     return True
 
@@ -78,10 +77,10 @@ async def kick_member(member: discord.Member, message: discord.Message, moderate
             success_one = await send_message(target=member, content=f"🛑 You are being kicked for sending scam images. If this was in error, please rejoin {member.guild.name}. 🛑")
             success_two = await send_message(target=member, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
-                log.exception(f"Unable to send 'kicked user' message to {member.display_name} ({message.author.id})")
+                log.warning(f"Unable to send 'kicked user' message to {member.display_name} ({message.author.id})")
             await member.kick(reason=f"SentyBot(Automated): Sending scam messages. Source: {moderated.source}. Deleted last 1min of messages.")
     except (discord.Forbidden, discord.HTTPException, discord.NotFound, ValueError):
-        log.exception()
+        process_exception()
         return False
     return True
 
@@ -93,10 +92,10 @@ async def delete_message(message: discord.Message, moderated: Moderated) -> bool
             success_one = await send_message(target=author, content=f"Your message has been deleted as it was detected to have scam images. If this was in error, please contact a moderator of {message.guild}.")
             success_two = await send_message(target=author, reference=message.to_reference(type=discord.MessageReferenceType.forward))
             if not success_one and not success_two:
-                log.error(f"Unable to send 'deleted message' message to {message.author.display_name} ({message.author.id})")
+                log.warning(f"Unable to send 'deleted message' message to {message.author.display_name} ({message.author.id})")
         await message.delete()
     except (discord.Forbidden, discord.HTTPException, discord.NotFound):
-        log.exception()
+        process_exception()
         return False
     return True
 
@@ -160,7 +159,7 @@ async def notify_staff(message: discord.Message, moderated: Moderated) -> None:
             success_one = await send_message(target=author, content="🛑 You are sending scam messages! Please secure your account! 🛑")
         success_two = await send_message(target=author, reference=message.to_reference(type=discord.MessageReferenceType.forward))
         if not success_one or not success_two:
-            log.error(f"Unable to send 'deleted message' message to {message.author.display_name} ({message.author.id})")
+            log.warning(f"Unable to send 'deleted message' message to {message.author.display_name} ({message.author.id})")
 
 # noinspection PyUnresolvedReferences
 def last_pinged_string(author:discord.Member) -> str:

@@ -1,14 +1,12 @@
-import logging
+import os
 import re
 from typing import List, Union
 
 from simhash import Simhash, SimhashIndex
 
-from mock_logging import MockLogger
+from my_logging import make_logger
 
-log = logging.getLogger()
-if log is not None:
-    log = MockLogger()
+log = make_logger()
 
 HAMMING_DISTANCE = 10
 

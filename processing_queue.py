@@ -5,21 +5,19 @@ from typing import NamedTuple, Union
 from asyncio import Lock, create_task, sleep
 
 from image import Downloader
-from mock_logging import MockLogger
 from moderation import Moderated
 from discord_features import notify_staff, can_moderate, can_ban, can_delete, can_kick, timeout_member, kick_member, ban_member, delete_message
 
 import discord
 import os
 import psutil
-import logging
 import time
 
 from sentrybot_exceptions import NotImageException, URLException, SentryBotException
 
-log = logging.getLogger()
-if log is not None:
-    log = MockLogger()
+from my_logging import make_logger, process_exception
+
+log = make_logger()
 
 EMAIL = open("./useragent").read().strip()
 VERSION = open("./version").read().strip()
@@ -80,6 +78,7 @@ class ProcessingQueue:
     mem_tracker = TaskMemAverage()
     time_tracker = TaskTimeAverage()
     bot: discord.ClientUser = None
+    cleanup: asyncio.Task = None
 
     def __init__(self, bot: discord.ClientUser|None, downloader: Downloader):
         if bot is None:
@@ -87,10 +86,6 @@ class ProcessingQueue:
         self.bot = bot
         self.downloader = downloader
         self.cleanup = create_task(self.clean_actioned())
-
-    async def close(self):
-        if self.cleanup is not None and not self.cleanup.done():
-            self.cleanup.cancel()
 
     async def add(self, message: discord.Message, urls: list):
         create_task(self._add(message, urls))
@@ -148,8 +143,10 @@ class ProcessingQueue:
             self.mem_tracker.add(peak)
             if data is not None and data:
                 create_task(self.action(message, data))
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            log.exception(f"Error processing {url}")
+            process_exception(f"Error processing {url}")
 
     async def _process_image(self, url: str) -> Union[None, str, dict]:
         try:
@@ -168,11 +165,14 @@ class ProcessingQueue:
         except URLException:
             log.info(f"Dead URL: {url}")
         except SentryBotException:
-            log.exception(f"URL: {url}")
+            process_exception(f"URL: {url}")
         except asyncio.TimeoutError:
             log.info(f"Timeout: {url}")
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            log.exception(f"URL: {url}")
+            process_exception(f"URL: {url}")
+        log.info(f"Nothing found in {url}")
         return None
 
     async def action(self, message: discord.Message, data: Union[str, dict]):

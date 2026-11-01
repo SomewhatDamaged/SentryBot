@@ -1,17 +1,14 @@
 import asyncio
 import functools
-import logging
 from typing import Union, Any
 
 import boto3
 import json
 import os
 import io
-from mock_logging import MockLogger
+from my_logging import make_logger, process_exception
 
-log = logging.getLogger()
-if log is not None:
-    log = MockLogger()
+log = make_logger()
 
 
 class MyCloudflare:
@@ -36,9 +33,6 @@ class MyCloudflare:
             self.client = None
             return
 
-    def close(self):
-        if self.client is not None:
-            self.client.close()
 
     def send_to_s3_blocking(self, image: io.BytesIO, name: str) -> bool:
         try:
@@ -65,7 +59,7 @@ class MyCloudflare:
                 if "CommonPrefixes" in result and len(result["CommonPrefixes"]) > 0:
                     return len(result["CommonPrefixes"])
         except Exception:
-            log.exception("Something went wrong!")
+            process_exception("Something went wrong!")
         return False
 
     async def has_folder(self, name: str, delimiter: str = '') -> Union[None, int]:
