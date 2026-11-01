@@ -271,20 +271,23 @@ class MyClient(discord.Client):
                             await message.reply(f"Synced commands, {message.author.mention}!")
                             return
                         if "check data" in message.content and message.author.id == self.application.owner.id:
-                            log.info(f"Checking data for: {message.author}")
-                            memory_info = self.queue.mem_tracker.memory_info
-                            memory_data = self.queue.mem_tracker.average_mem_per_task
-                            max_mem = int(max(self.queue.mem_tracker.last_ten_tasks))
-                            time_data = str(timedelta(seconds=round(self.queue.time_tracker.average_time_per_task, 2)))
-                            def clean_timedelta(s: str) -> str:
-                                while s[-1] == '0':
-                                    s = s[:-1]
-                                s = s.split(":", 1)[1]
-                                return s
-                            message_text = f"Average memory per task: {HumanBytes.format(memory_data)}\n"
-                            message_text += f"Max memory for last 10 tasks: {HumanBytes.format(max_mem)}\n"
-                            message_text += f"Free memory: {HumanBytes.format(memory_info.memory_free)}\n"
-                            message_text += f"Average time per task: {clean_timedelta(time_data)}\n"
+                            try:
+                                log.info(f"Checking data for: {message.author}")
+                                memory_info = self.queue.mem_tracker.memory_info
+                                memory_data = self.queue.mem_tracker.average_mem_per_task
+                                max_mem = int(max(self.queue.mem_tracker.last_ten_tasks))
+                                time_data = str(timedelta(seconds=round(self.queue.time_tracker.average_time_per_task, 2)))
+                                def clean_timedelta(s: str) -> str:
+                                    while s[-1] == '0':
+                                        s = s[:-1]
+                                    s = s.split(":", 1)[1]
+                                    return s
+                                message_text = f"Average memory per task: {HumanBytes.format(memory_data)}\n"
+                                message_text += f"Max memory for last 10 tasks: {HumanBytes.format(max_mem)}\n"
+                                message_text += f"Free memory: {HumanBytes.format(memory_info.memory_free)}\n"
+                                message_text += f"Average time per task: {clean_timedelta(time_data)}\n"
+                            except ValueError:
+                                message_text = f"Not enough data yet!"
                             await message.reply(message_text)
                             return
                         # ...
