@@ -124,6 +124,8 @@ async def notify_staff(message: discord.Message, moderated: Moderated) -> None:
     channel = message.channel
     author = message.author
     assert isinstance(author, discord.Member)
+    if too_recent(author): # Waaaay too soon to ping more.
+        return
     mods = []
     for member in guild.members:
         if is_moderator(member):
