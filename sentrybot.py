@@ -212,11 +212,15 @@ class MyClient(discord.Client):
                         raise SentryBotException("Too many images to check. What happened?!")
                     await interaction.edit_original_response(content=message_content, embeds=embeds)
                     embeds[-1].description += "```\n"
-                    image_metadata = await self.downloader.get_hash(url)
+                    image_metadata, ocr_data = await self.downloader.get_hash_and_ocr(url)
                     if len(image_metadata) > 1:
                         sub_message = ">>>Checking for cropped images<<<\n"
                     else:
                         sub_message = ""
+                    if ocr_data and "match" in ocr_data and ocr_data["match"] == True:
+                        embeds[-1].description += f"Found '{ocr_data['match_string']}' with distance {ocr_data['distance']}\n"
+                        await interaction.edit_original_response(content=message_content, embeds=embeds)
+                        continue
                     for p_hash, dimensions, image_type in image_metadata:
                         if await self.downloader.check_hash(p_hash, dimensions):
                             embeds[-1].description += f"Found {p_hash} in {image_type} with dimensions {dimensions}\n"

@@ -115,7 +115,7 @@ class ProcessingQueue:
                         await sleep(0.2)
                         tasks = self.check_tasks(tasks)
                     await sleep(0.5)
-                    tasks.append(create_task(self.process_image(datum["message"], url)))
+                    tasks.append(create_task(self.process_image_and_action(datum["message"], url)))
 
     def check_tasks(self, tasklist: list[asyncio.Task]):
         tasks_out: list[asyncio.Task] = []
@@ -124,7 +124,7 @@ class ProcessingQueue:
                 tasks_out.append(task)
         return tasks_out
 
-    async def process_image(self, message: discord.Message, url: str):
+    async def process_image_and_action(self, message: discord.Message, url: str):
         try:
             if not isinstance(message.author, discord.Member):
                 return
@@ -136,7 +136,7 @@ class ProcessingQueue:
             tracemalloc.start()
             tracemalloc.reset_peak()
             # begin task here
-            data = await self._process_image(url)
+            data = await self.process_image(url)
             # end task
             _, peak = tracemalloc.get_traced_memory()
             tracemalloc.stop()
@@ -150,7 +150,7 @@ class ProcessingQueue:
         except Exception:
             process_exception(f"Error processing {url}")
 
-    async def _process_image(self, url: str) -> Union[None, str, dict]:
+    async def process_image(self, url: str) -> Union[None, str, dict]:
         try:
             log.info(f"Checking {url}")
             image_metadata, ocr_data = await self.downloader.get_hash_and_ocr(url)
